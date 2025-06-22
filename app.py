@@ -211,7 +211,7 @@ def highlight_text_with_entities(text: str, entities: list, label_colors: dict) 
             else:
                 highlighted.append(html.escape(text[last_pos:idx]))
                 highlighted.append(
-                    f'<mark style="background-color: {color}; font-weight: bold;" title="{label}">'
+                    f'<mark style="background-color: {color}; font-weight: bold; cursor: help;" title="{html.escape(label)}">'
                     f'{html.escape(span)}</mark>'
                 )
                 used_positions.update(range(idx, idx + len(span)))
@@ -222,15 +222,10 @@ def highlight_text_with_entities(text: str, entities: list, label_colors: dict) 
         if not found:
             continue
 
-    # Append any remaining text
-    # highlighted.append(html.escape(text[last_pos:]))
-    highlighted.append(
-    f'<mark style="background-color: #fdd835; font-weight: bold;" title="{label}">{html.escape(span)}</mark>'
-    )
-    
+    # Append any remaining text after all entities
+    highlighted.append(html.escape(text[last_pos:]))
 
     return ''.join(highlighted)
-
 
 
 # === Streamlit UI ===
