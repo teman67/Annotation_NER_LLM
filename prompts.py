@@ -1,177 +1,239 @@
 # prompts.py
 
-import pandas as pd
-from typing import List
-
-def format_tag_section(tag_df: pd.DataFrame) -> str:
+def build_annotation_prompt(tag_df, text_chunk):
     """
-    Generate a string with all tag_name, definition, and examples from the uploaded CSV.
+    Build prompt for flat (traditional) annotation.
     """
-    tag_texts = []
+    tag_definitions = []
     for _, row in tag_df.iterrows():
-        tag_block = (
-            f"TAG: {row['tag_name']}\n"
-            f"Definition: {row['definition']}\n"
-            f"Examples: {row['examples']}\n"
-        )
-        tag_texts.append(tag_block)
-    return "\n".join(tag_texts)
+        tag_name = row['tag_name']
+        definition = row['definition']
+        examples = row['examples']
+        tag_definitions.append(f"- **{tag_name}**: {definition}\n  Examples: {examples}")
+    
+    tag_section = "\n".join(tag_definitions)
+    
+    prompt = f"""You are an expert scientific text annotator. Your task is to identify and extract entities from the given text according to the provided tag definitions.
 
-def build_annotation_prompt(tag_df: pd.DataFrame, chunk_text: str) -> str:
-    """
-    Constructs the full prompt including tag definitions and the target text to annotate.
-    """
-    tag_section = format_tag_section(tag_df)
-
-    prompt = f"""
-You are a domain expert in scientific text annotation. Your task is to perform Named Entity Recognition (NER)
-on the following text using the tag definitions and examples provided.
-
-Tag definitions and examples:
------------------------------
+## Tag Definitions:
 {tag_section}
 
-Instructions:
-- Annotate only the text spans that clearly match the definitions.
-- For each recognized entity, return a JSON object with:
-  - start_char: character index where the entity starts
-  - end_char: character index where it ends
-  - text: the exact span
-  - label: the matching tag
+## Instructions:
+1. Read the text carefully and identify all entities that match the provided tag definitions
+2. For each entity, provide the exact character positions (start_char, end_char)
+3. Extract the exact text span for each entity
+4. Assign the most appropriate tag label
+5. Provide a confidence score between 0.0 and 1.0 for each annotation
 
-Return your output as a JSON list like this:
+## Text to Annotate:
+{text_chunk}
+
+## Output Format:
+Return your annotations as a JSON array with the following structure:
 [
-  {{"start_char": 12, "end_char": 25, "text": "graphene oxide", "label": "MATERIAL", "confidence": 0.85}},
-  {{"start_char": 56, "end_char": 72, "text": "X-ray diffraction", "label": "METHOD", "confidence": 0.95}}
+  {{
+    "start_char": <integer>,
+    "end_char": <integer>,
+    "text": "<exact text span>",
+    "label": "<tag_name>",
+    "confidence": <float between 0.0 and 1.0>
+  }}
 ]
 
-Text to annotate:
------------------
-{chunk_text}
-""".strip()
+Make sure to:
+- Use exact character positions from the original text
+- Include only entities that clearly match the tag definitions
+- Provide realistic confidence scores based on how well the entity fits the definition
+- Return valid JSON format only, no additional text
+
+JSON Array:"""
 
     return prompt
 
-
-
-# ############
-
-# def build_annotation_prompt(tag_df: pd.DataFrame, chunk_text: str) -> str:
-#     """
-#     Constructs an optimized prompt for scientific NER with explicit exclusion rules
-#     and improved instruction clarity.
-#     """
-#     tag_section = format_tag_section(tag_df)
+def build_nested_annotation_prompt(tag_df, text_chunk):
+    """
+    Build prompt for nested annotation, where entities can contain other entities.
+    """
+    tag_definitions = []
+    for _, row in tag_df.iterrows():
+        tag_name = row['tag_name']
+        definition = row['definition']
+        examples = row['examples']
+        tag_definitions.append(f"- **{tag_name}**: {definition}\n  Examples: {examples}")
     
-#     # Extract tag names for exclusion list
-#     tag_names = tag_df['tag_name'].str.lower().tolist() if 'tag_name' in tag_df.columns else []
-#     exclusion_examples = ", ".join([f'"{name}"' for name in tag_names[:5]])  # Show first 5 as examples
-
-#     prompt = f"""You are a scientific text annotation expert performing Named Entity Recognition (NER).
-
-# ANNOTATION RULES:
-# 1. Annotate text spans that match the semantic meaning of tag definitions below
-# 2. Do NOT annotate words that are identical to tag names themselves
-# 3. Focus on substantive scientific entities, not generic descriptive words
-# 4. Ensure annotations capture complete entity boundaries (full phrases, not fragments)
-
-# EXCLUSION RULE - Do NOT annotate these exact words when they appear as standalone terms:
-# {exclusion_examples}{"..." if len(tag_names) > 5 else ""}
-
-# TAG DEFINITIONS:
-# {tag_section}
-
-# OUTPUT FORMAT:
-# Return a JSON array of entities. Each entity must include:
-# - start_char: starting character index (0-based)
-# - end_char: ending character index (exclusive)
-# - text: exact text span
-# - label: matching tag name
-
-# Example output:
-# [
-#   {{"start_char": 12, "end_char": 25, "text": "graphene oxide", "label": "MATERIAL"}},
-#   {{"start_char": 56, "end_char": 72, "text": "X-ray diffraction", "label": "METHOD"}}
-# ]
-
-# VALIDATION CHECKLIST:
-# - ✓ Entity text matches definition semantically
-# - ✓ Boundaries capture complete phrases
-# - ✓ Not annotating tag names themselves
-# - ✓ JSON format is valid
-
-# TEXT TO ANNOTATE:
-# {chunk_text}
-
-# JSON OUTPUT:""".strip()
-
-#     return prompt
-
-
-# def build_annotation_prompt_with_examples(tag_df: pd.DataFrame, chunk_text: str, 
-#                                         few_shot_examples: list = None) -> str:
-#     """
-#     Enhanced version with few-shot examples for better performance.
-#     """
-#     tag_section = format_tag_section(tag_df)
-#     tag_names = tag_df['tag_name'].str.lower().tolist() if 'tag_name' in tag_df.columns else []
-#     exclusion_list = ", ".join([f'"{name}"' for name in tag_names])
+    tag_section = "\n".join(tag_definitions)
     
-#     few_shot_section = ""
-#     if few_shot_examples:
-#         few_shot_section = "\nFEW-SHOT EXAMPLES:\n"
-#         for i, example in enumerate(few_shot_examples[:3], 1):  # Limit to 3 examples
-#             few_shot_section += f"\nExample {i}:\nText: \"{example['text']}\"\nOutput: {example['output']}\n"
-#         few_shot_section += "\n"
+    prompt = f"""You are an expert scientific text annotator specializing in hierarchical entity recognition. Your task is to identify and extract entities from the given text, including nested relationships where smaller entities exist within larger ones.
 
-#     prompt = f"""You are a scientific NER annotation expert. Extract entities that match tag definitions while avoiding common pitfalls.
+## Tag Definitions:
+{tag_section}
 
-# CRITICAL RULES:
-# • Annotate semantic matches to tag definitions, not literal tag name occurrences
-# • Skip these exact words when standalone: {exclusion_list}
-# • Capture complete entity spans (e.g., "scanning electron microscopy" not just "electron")
-# • Prioritize precision over recall - only annotate clear matches
+## Instructions:
+1. Read the text carefully and identify all entities that match the provided tag definitions
+2. Look for hierarchical relationships where one entity contains another (e.g., a protein name within a protein complex description)
+3. For each main entity, identify any nested entities within its boundaries
+4. Provide exact character positions for both main and nested entities
+5. Assign appropriate confidence scores for all entities
 
-# TAG DEFINITIONS:
-# {tag_section}{few_shot_section}
+## Nested Entity Rules:
+- A nested entity must be completely contained within the boundaries of its parent entity
+- Nested entities should have clear semantic relationships with their parents
+- Common patterns: specific terms within general descriptions, components within systems, examples within categories
+- A single parent can contain multiple nested entities
+- Keep nesting to reasonable levels (avoid over-segmentation)
 
-# TARGET TEXT:
-# {chunk_text}
+## Text to Annotate:
+{text_chunk}
 
-# Return valid JSON array of entities with start_char, end_char, text, and label fields:""".strip()
+## Output Format:
+Return your annotations as a JSON array with the following structure:
+[
+  {{
+    "start_char": <integer>,
+    "end_char": <integer>,
+    "text": "<exact text span>",
+    "label": "<tag_name>",
+    "confidence": <float between 0.0 and 1.0>,
+    "nested_entities": [
+      {{
+        "start_char": <integer>,
+        "end_char": <integer>,
+        "text": "<exact nested text span>",
+        "label": "<tag_name>",
+        "confidence": <float between 0.0 and 1.0>
+      }}
+    ]
+  }}
+]
 
-#     return prompt
+## Example Structure:
+If you find "The BRCA1 protein complex contains multiple domains" where:
+- "BRCA1 protein complex" is a PROTEIN_COMPLEX (characters 4-27)
+- "BRCA1" is a PROTEIN_NAME (characters 4-9)
 
+The output should be:
+[
+  {{
+    "start_char": 4,
+    "end_char": 27,
+    "text": "BRCA1 protein complex",
+    "label": "PROTEIN_COMPLEX",
+    "confidence": 0.9,
+    "nested_entities": [
+      {{
+        "start_char": 4,
+        "end_char": 9,
+        "text": "BRCA1",
+        "label": "PROTEIN_NAME",
+        "confidence": 0.95
+      }}
+    ]
+  }}
+]
 
-# def build_annotation_prompt_contextual(tag_df: pd.DataFrame, chunk_text: str, 
-#                                      context_window: str = None) -> str:
-#     """
-#     Version that includes surrounding context for better boundary detection.
-#     """
-#     tag_section = format_tag_section(tag_df)
-#     tag_names_lower = set(tag_df['tag_name'].str.lower()) if 'tag_name' in tag_df.columns else set()
+Make sure to:
+- Use exact character positions from the original text
+- Ensure nested entities are within parent boundaries
+- Include empty nested_entities array if no nesting exists
+- Provide realistic confidence scores
+- Return valid JSON format only, no additional text
+
+JSON Array:"""
+
+    return prompt
+
+def build_custom_prompt(tag_df, text_chunk, custom_instructions=""):
+    """
+    Build a custom prompt with additional user-specified instructions.
+    """
+    base_prompt = build_annotation_prompt(tag_df, text_chunk)
     
-#     context_section = ""
-#     if context_window:
-#         context_section = f"\nSURROUNDING CONTEXT (for reference only, do not annotate):\n{context_window}\n"
+    if custom_instructions:
+        # Insert custom instructions before the output format section
+        sections = base_prompt.split("## Output Format:")
+        enhanced_prompt = f"{sections[0]}\n## Additional Instructions:\n{custom_instructions}\n\n## Output Format:{sections[1]}"
+        return enhanced_prompt
+    
+    return base_prompt
 
-#     prompt = f"""Scientific NER Task: Identify entities matching the provided tag definitions.
+def build_few_shot_prompt(tag_df, text_chunk, examples=None):
+    """
+    Build a few-shot prompt with examples to improve annotation quality.
+    """
+    tag_definitions = []
+    for _, row in tag_df.iterrows():
+        tag_name = row['tag_name']
+        definition = row['definition']
+        examples = row['examples']
+        tag_definitions.append(f"- **{tag_name}**: {definition}\n  Examples: {examples}")
+    
+    tag_section = "\n".join(tag_definitions)
+    
+    # Default examples if none provided
+    if examples is None:
+        examples = [
+            {
+                "text": "The p53 protein regulates cell cycle progression.",
+                "annotations": [
+                    {
+                        "start_char": 4,
+                        "end_char": 7,
+                        "text": "p53",
+                        "label": "PROTEIN_NAME",
+                        "confidence": 0.95
+                    },
+                    {
+                        "start_char": 4,
+                        "end_char": 15,
+                        "text": "p53 protein",
+                        "label": "PROTEIN",
+                        "confidence": 0.9
+                    }
+                ]
+            }
+        ]
+    
+    example_section = ""
+    for i, example in enumerate(examples, 1):
+        example_section += f"\n### Example {i}:\nText: \"{example['text']}\"\nAnnotations: {example['annotations']}\n"
+    
+    prompt = f"""You are an expert scientific text annotator. Your task is to identify and extract entities from the given text according to the provided tag definitions.
 
-# ANNOTATION GUIDELINES:
-# 1. Match entities by semantic meaning, not surface form
-# 2. Exclude tag names when used as generic descriptors: {list(tag_names_lower)}
-# 3. Include complete phrases (e.g., "transmission electron microscopy")
-# 4. Verify entity boundaries align with natural language units
-# 5. Only annotate spans you're confident about
+## Tag Definitions:
+{tag_section}
 
-# {tag_section}{context_section}
+## Examples:
+{example_section}
 
-# CURRENT TEXT CHUNK:
-# {chunk_text}
+## Instructions:
+1. Read the text carefully and identify all entities that match the provided tag definitions
+2. Follow the annotation style shown in the examples above
+3. For each entity, provide the exact character positions (start_char, end_char)
+4. Extract the exact text span for each entity
+5. Assign the most appropriate tag label
+6. Provide a confidence score between 0.0 and 1.0 for each annotation
 
-# Output format - JSON array:
-# [{{"start_char": int, "end_char": int, "text": "span", "label": "TAG"}}]
+## Text to Annotate:
+{text_chunk}
 
-# Annotations:""".strip()
+## Output Format:
+Return your annotations as a JSON array with the following structure:
+[
+  {{
+    "start_char": <integer>,
+    "end_char": <integer>,
+    "text": "<exact text span>",
+    "label": "<tag_name>",
+    "confidence": <float between 0.0 and 1.0>
+  }}
+]
 
-#     return prompt
+Make sure to:
+- Use exact character positions from the original text
+- Include only entities that clearly match the tag definitions
+- Provide realistic confidence scores based on how well the entity fits the definition
+- Return valid JSON format only, no additional text
+
+JSON Array:"""
+
+    return prompt
