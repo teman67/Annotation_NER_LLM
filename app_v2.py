@@ -189,7 +189,7 @@ def parse_llm_response(response_text: str, nested_mode: bool = False):
                             
         return entities
     except Exception as e:
-        st.error(f"Failed to parse LLM output JSON: {e}")
+        # st.error(f"Failed to parse LLM output JSON: {e}")
         return []
 
 def aggregate_entities(all_entities, offset):
