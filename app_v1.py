@@ -158,7 +158,7 @@ else:
     model = st.sidebar.selectbox("Claude model", ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"])
 
 temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 0.1, step=0.05)
-chunk_size = st.sidebar.slider("Chunk size (in characters)", 500, 4000, 800, step=100)
+chunk_size = st.sidebar.slider("Chunk size (in characters)", 200, 4000, 1000, step=100)
 max_tokens = st.sidebar.slider("Max tokens per response", 200, 6000, 1000, step=100)
 
 st.sidebar.markdown("---")
@@ -385,6 +385,98 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
             # Store results in session state
             st.session_state.annotated_entities = entities
             st.session_state.annotation_complete = True
+
+            # DEBUG: Add comprehensive debugging
+            st.markdown("### 🔍 Annotation Information")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Raw Entities from LLM", len(st.session_state.annotated_entities))
+            with col2:
+                # Check for duplicates
+                entity_texts = [e.get('text', '') for e in st.session_state.annotated_entities]
+                unique_texts = len(set(entity_texts))
+                st.metric("Unique Entity Texts", unique_texts)
+            with col3:
+                # Check for invalid entities
+                valid_entities = [e for e in st.session_state.annotated_entities 
+                                if all(key in e for key in ['start_char', 'end_char', 'text', 'label'])]
+                st.metric("Valid Entities", len(valid_entities))
+
+            # Show problematic entities
+            problematic_entities = [e for e in st.session_state.annotated_entities 
+                                if not all(key in e for key in ['start_char', 'end_char', 'text', 'label'])]
+
+            if problematic_entities:
+                with st.expander("⚠️ Problematic Entities (missing required fields)", expanded=True):
+                    st.json(problematic_entities[:5])  # Show first 5
+
+            # Check for entities with invalid positions
+            invalid_pos_entities = []
+            text_length = len(st.session_state.text_data)
+            for e in st.session_state.annotated_entities:
+                start = e.get('start_char', 0)
+                end = e.get('end_char', 0)
+                if start < 0 or end > text_length or start >= end:
+                    invalid_pos_entities.append(e)
+
+            if invalid_pos_entities:
+                with st.expander("⚠️ Entities with Invalid Positions", expanded=True):
+                    st.json(invalid_pos_entities[:5])
+
+            # Show entity distribution by label
+            if st.session_state.annotated_entities:
+                entity_df_debug = pd.DataFrame(st.session_state.annotated_entities)
+                label_counts = entity_df_debug['label'].value_counts()
+                
+                with st.expander("📊 Entity Distribution by Label", expanded=False):
+                    st.bar_chart(label_counts)
+
+            # FIXED: Update the DataFrame creation section
+            if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
+                st.header("📝 Edit Annotations")
+
+                # Initialize or reload dataframe from session state, including ID column
+                if "editable_entities_df" not in st.session_state:
+                    # FIXED: Filter out invalid entities before creating DataFrame
+                    valid_entities = []
+                    for e in st.session_state.annotated_entities:
+                        # Check if entity has all required fields
+                        required_fields = ['start_char', 'end_char', 'text', 'label']
+                        if all(field in e and e[field] is not None for field in required_fields):
+                            # Additional validation
+                            if (isinstance(e['start_char'], (int, float)) and 
+                                isinstance(e['end_char'], (int, float)) and
+                                e['start_char'] >= 0 and 
+                                e['end_char'] > e['start_char'] and
+                                isinstance(e['text'], str) and 
+                                len(e['text'].strip()) > 0):
+                                valid_entities.append(e)
+                            else:
+                                st.warning(f"Filtered out invalid entity: {e}")
+                        else:
+                            st.warning(f"Filtered out entity missing required fields: {e}")
+                    
+                    if len(valid_entities) != len(st.session_state.annotated_entities):
+                        st.warning(f"⚠️ Filtered out {len(st.session_state.annotated_entities) - len(valid_entities)} invalid entities")
+                        st.session_state.annotated_entities = valid_entities
+                    
+                    try:
+                        df_entities = pd.DataFrame(valid_entities)
+                        if not df_entities.empty:
+                            df_entities.insert(0, "ID", range(len(df_entities)))
+                            st.session_state.editable_entities_df = df_entities
+                            st.success(f"✅ Created DataFrame with {len(df_entities)} valid entities")
+                        else:
+                            st.error("❌ No valid entities to display")
+                            st.session_state.editable_entities_df = pd.DataFrame()
+                    except Exception as e:
+                        st.error(f"Error creating DataFrame: {e}")
+                        st.session_state.editable_entities_df = pd.DataFrame()
+                else:
+                    df_entities = st.session_state.editable_entities_df
+
+                # Rest of your code continues...
             
             st.success(f"🎯 Annotation completed! Found {len(entities)} entities total.")
 
