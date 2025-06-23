@@ -17,40 +17,40 @@ def format_tag_section(tag_df: pd.DataFrame) -> str:
         tag_texts.append(tag_block)
     return "\n".join(tag_texts)
 
-def build_annotation_prompt(tag_df: pd.DataFrame, chunk_text: str) -> str:
-    """
-    Constructs the full prompt including tag definitions and the target text to annotate.
-    """
-    tag_section = format_tag_section(tag_df)
+# def build_annotation_prompt(tag_df: pd.DataFrame, chunk_text: str) -> str:
+#     """
+#     Constructs the full prompt including tag definitions and the target text to annotate.
+#     """
+#     tag_section = format_tag_section(tag_df)
 
-    prompt = f"""
-You are a domain expert in scientific text annotation. Your task is to perform Named Entity Recognition (NER)
-on the following text using the tag definitions and examples provided.
+#     prompt = f"""
+# You are a domain expert in scientific text annotation. Your task is to perform Named Entity Recognition (NER)
+# on the following text using the tag definitions and examples provided.
 
-Tag definitions and examples:
------------------------------
-{tag_section}
+# Tag definitions and examples:
+# -----------------------------
+# {tag_section}
 
-Instructions:
-- Annotate only the text spans that clearly match the definitions.
-- For each recognized entity, return a JSON object with:
-  - start_char: character index where the entity starts
-  - end_char: character index where it ends
-  - text: the exact span
-  - label: the matching tag
+# Instructions:
+# - Annotate only the text spans that clearly match the definitions.
+# - For each recognized entity, return a JSON object with:
+#   - start_char: character index where the entity starts
+#   - end_char: character index where it ends
+#   - text: the exact span
+#   - label: the matching tag
 
-Return your output as a JSON list like this:
-[
-  {{"start_char": 12, "end_char": 25, "text": "graphene oxide", "label": "MATERIAL", "confidence": 0.85}},
-  {{"start_char": 56, "end_char": 72, "text": "X-ray diffraction", "label": "METHOD", "confidence": 0.95}}
-]
+# Return your output as a JSON list like this:
+# [
+#   {{"start_char": 12, "end_char": 25, "text": "graphene oxide", "label": "MATERIAL", "confidence": 0.85}},
+#   {{"start_char": 56, "end_char": 72, "text": "X-ray diffraction", "label": "METHOD", "confidence": 0.95}}
+# ]
 
-Text to annotate:
------------------
-{chunk_text}
-""".strip()
+# Text to annotate:
+# -----------------
+# {chunk_text}
+# """.strip()
 
-    return prompt
+#     return prompt
 
 
 
@@ -108,39 +108,86 @@ Text to annotate:
 #     return prompt
 
 
-# def build_annotation_prompt_with_examples(tag_df: pd.DataFrame, chunk_text: str, 
-#                                         few_shot_examples: list = None) -> str:
-#     """
-#     Enhanced version with few-shot examples for better performance.
-#     """
-#     tag_section = format_tag_section(tag_df)
-#     tag_names = tag_df['tag_name'].str.lower().tolist() if 'tag_name' in tag_df.columns else []
-#     exclusion_list = ", ".join([f'"{name}"' for name in tag_names])
-    
-#     few_shot_section = ""
-#     if few_shot_examples:
-#         few_shot_section = "\nFEW-SHOT EXAMPLES:\n"
-#         for i, example in enumerate(few_shot_examples[:3], 1):  # Limit to 3 examples
-#             few_shot_section += f"\nExample {i}:\nText: \"{example['text']}\"\nOutput: {example['output']}\n"
-#         few_shot_section += "\n"
+import pandas as pd
 
-#     prompt = f"""You are a scientific NER annotation expert. Extract entities that match tag definitions while avoiding common pitfalls.
+def build_annotation_prompt(tag_df: pd.DataFrame, chunk_text: str,
+                            few_shot_examples: list = None) -> str:
+    """
+    Build prompt with hard exclusion on tag label variants including plural/singular, separators, and casing.
+    """
+    tag_section = format_tag_section(tag_df)
 
-# CRITICAL RULES:
-# • Annotate semantic matches to tag definitions, not literal tag name occurrences
-# • Skip these exact words when standalone: {exclusion_list}
-# • Capture complete entity spans (e.g., "scanning electron microscopy" not just "electron")
-# • Prioritize precision over recall - only annotate clear matches
+    def generate_exclusion_variants(name: str) -> set:
+        suffix_map = {
+            "properties": "property", "property": "properties",
+            "methods": "method", "method": "methods",
+            "types": "type", "type": "types",
+            "conditions": "condition", "condition": "conditions",
+            "processes": "process", "process": "processes",
+            "analyses": "analysis", "analysis": "analyses",
+            "results": "result", "result": "results"
+        }
 
-# TAG DEFINITIONS:
-# {tag_section}{few_shot_section}
+        base = name.lower().replace('_', ' ').replace('-', ' ')
+        tokens = base.split()
+        variants = set()
+        separators = [' ', '-', '_']
+        casings = [str.lower, str.upper, str.title, str.capitalize]
 
-# TARGET TEXT:
-# {chunk_text}
+        for sep in separators:
+            combined = sep.join(tokens)
+            for case_fn in casings:
+                form = case_fn(combined)
+                variants.add(form)
 
-# Return valid JSON array of entities with start_char, end_char, text, and label fields:""".strip()
+                # Add plural/singular variants
+                for plural, singular in suffix_map.items():
+                    if form.endswith(plural):
+                        variants.add(case_fn(form[:-len(plural)] + singular))
+                    if form.endswith(singular):
+                        variants.add(case_fn(form[:-len(singular)] + plural))
 
-#     return prompt
+        return variants
+
+    exclusion_terms = set()
+    if 'tag_name' in tag_df.columns:
+        for tag_name in tag_df['tag_name']:
+            exclusion_terms.update(generate_exclusion_variants(tag_name))
+        exclusion_list = ", ".join(f'"{term}"' for term in sorted(exclusion_terms))
+    else:
+        exclusion_list = ""
+
+    few_shot_section = ""
+    if few_shot_examples:
+        few_shot_section = "\nFEW-SHOT EXAMPLES:\n"
+        for i, example in enumerate(few_shot_examples[:3], 1):
+            few_shot_section += f"\nExample {i}:\nText: \"{example['text']}\"\nOutput: {example['output']}\n"
+        few_shot_section += "\n"
+
+    prompt = f"""You are a scientific NER annotation expert. Extract entities that match the SEMANTIC MEANING of tag definitions, not the literal tag labels themselves.
+
+STRICT RULES:
+• STRICTLY DO NOT annotate any of the following tag names, even if they appear in a different form: {exclusion_list}
+• These terms are considered category labels, NOT scientific entities.
+• Variants include different capitalizations, plural/singular forms, and character changes like "-", "_", or space.
+• Do not annotate these terms even if they appear as-is in the input.
+
+GOOD ANNOTATIONS:
+• Concrete examples of the category (e.g., "finite element analysis" for METHOD, "steel" for MATERIAL_TYPE)
+
+BAD ANNOTATIONS:
+• Abstract category names (e.g., "method", "process", "material properties")
+• Any term that appears in the exclusion list above
+
+TAG DEFINITIONS:
+{tag_section}{few_shot_section}
+TARGET TEXT:
+{chunk_text}
+
+Return valid JSON array of entities with start_char, end_char, text, label and confidence fields:"""
+
+    return prompt
+
 
 
 # def build_annotation_prompt_contextual(tag_df: pd.DataFrame, chunk_text: str, 
@@ -170,7 +217,7 @@ Text to annotate:
 # {chunk_text}
 
 # Output format - JSON array:
-# [{{"start_char": int, "end_char": int, "text": "span", "label": "TAG"}}]
+# [{{"start_char": int, "end_char": int, "text": "span", "label": "TAG", "confidence": "float"}}]
 
 # Annotations:""".strip()
 
