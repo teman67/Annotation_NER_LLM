@@ -2,6 +2,8 @@
 
 A powerful Streamlit application that uses Large Language Models (OpenAI GPT or Claude) to automatically annotate scientific text with custom tags and definitions. Perfect for researchers, data scientists, and anyone working with scientific literature who needs automated text annotation capabilities.
 
+![App Screenshot](ScreenShots/Output.png)
+
 ## ✨ Features
 
 ### 🤖 **Multi-Model Support**
