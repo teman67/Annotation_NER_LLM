@@ -1,0 +1,544 @@
+{
+  "text": "# 4D pine scale: biomimetic 4D printed autonomous scale and flap structures capable of multi-phase movement  \n\n# Research  \n\nCite this article: Correa D, Poppinga S, Mylo MD, Westermeier AS, Bruchmann B, Menges A, Speck T. 2020 4D pine scale: biomimetic 4D printed autonomous scale and flap structures capable of multi-phase movement. Phil. Trans. R. Soc. A 378: 20190445.   \n\nAccepted: 15 November 2019  \n\nOne contribution of 11 to a theme issue ‘Bioinspired materials and surfaces for green science and technology (part 3)’.  \n\nSubject Areas: mechanical engineering, biomechanics  \n\n\n# 1. Introduction  \n\n# (a) Motivation  \n\nMotile plant structures (e.g. petals, leaves) represent efficient and functionally robust compliant mechanisms . They perform aesthetic shape-changes without nerves, muscles and discrete hinges and are increasingly recognized as suitable concept generators for the development of biomimetic shape-changing structures [2–5]. Four-dimensional (4D) printing of such devices has become an emerging field [6–10], but the movement patterns of the bioinspired structures realized so far are limited in terms of temporal and spatial versatility and programmability. On the contrary, nature holds ready a multitude of plant movement actuation and deformation principles and consecutive motion patterns [11–14]. Understanding the respective form–structure–function relationships of the biological concept generators and implementing the motion principles at work into technical devices would open a versatile toolbox for generating biomimetic structures with tailored motion responses. These could have various applications ranging from micro-electromechanics, microfluidics, soft robotics to architecture. In this study, we aimed at abstracting the complex multi-phase movement of Bhutan pinecones and to achieve similar modes of actuation and deformation in 4D printed structures, which can serve as a basis for the development of versatile and self-sufficient scale and flap systems.  \n\n# (b) Biological concept generators of the biomimetic approach  \n\nOur biological concept generators are cone seed scales of the Bhutan pine (Pinus wallichiana Jacks., Pinaceae). In general, pinecones are well known to be in a closed state under wet environmental conditions (keeping the seeds safe and avoiding release of the airborne seeds) and to open when it is dry (releasing the seeds for dispersal mainly by wind; figure 1a,b) . Such passive waterdriven motion responses are nastic and, therefore, structurally ‘programmed’ into the individual seed scales. Each scale forms a functional bilayer structure through a gradation in its tissue structure, from the sclereid cells at the bottom of the scale to a region of sclerenchymatous strands at the top (figure 1c–l). Whereas the sclereid layer is the actuating (active) layer, the sclerenchymatous layer is the resistance (passive) layer. Both layers together dictate an upward scale bending upon water uptake and differential swelling (wet environment, the cone closes) and a downward bending upon desiccation (dry environment, the cone opens) [15,17–19]. Bending is restricted to a short zone at the basal part of the scale . The moving pinecone scales are able to generate considerable blocking forces of around 3 N . Furthermore, the structural integrity of the cone scales can be conserved for millions of years, highlighting extraordinary functional resilience and robustness .  \n\nThe stratification of the pinecone scale’s functional bilayer set-up is not homogeneous and the dimensions of sclereid and sclerenchymatous tissues vary over the length of the individual scale (figure 1c-f) . The sclerenchyma forms cable-like structures, which extend into the scale periphery, where they are inserted into the apophysis (figure 1d-h ). There is no tight ‘bonding’ between the actuating sclereid and resistive sclerenchyma layers, as the sclerenchymatous strands are embedded into a rather soft matrix of ‘brown tissue’ (sensu [15,17–22]) and can often be easily torn apart from the sclereid layer by hand (figure 1d-k ). In addition, the degree of lignification is not clearly delimited between the lower actuating and upper resistive layer, with the sclereid layer showing increasing degrees of lignification towards the highly lignified sclerenchyma (figure 1l). In summary, the structural set-up of pinecone seed scales is very complex and variable among the individual scales and not yet fully understood in respect to the characteristics of the individual hygroscopic bending deformation.  \n\nFigure 1. (Caption overleaf.)  \n\nIn preliminary investigations, we found that the seed scale of Bhutan pine performs a bi-axial two-phase hygroscopic movement  (figure 1m). When the scale is wet, it is almost straight (without any conspicuous longitudinal curvature), but it possesses a notable transversal curvature at its apical part, with the margins being curved upwards. During desiccation, this  \n\nFigure 1. (Overleaf.) Pinecone seed scale functional morphology and kinematics. The scales passively react to changing environmental humidity conditions leading to a closed cone when it is wet (a) and to an open cone when it is dry (b) . A longitudinally halved cone in the dry condition (c). The actuating sclereid layer is not tightly connected to the sclerenchymatous strands, which are embedded in a matrix of ‘brown tissue’ (sensu ) (d,e) and reach towards the apical apophysis (f ). Images (d–f ) modified from . Light microscopy image of a semi-thin cross section of the functional bilayer set-up (g) , one sclerenchymatous strand (h) , a detail of the sclereid layer (i), a detail of the sclerenchymatous strand (j), and a detail of the ‘brown tissue’ (k) . Fluorescence microscopy of an acridine orange-stained semi-thin longitudinal section of a scale (l). The brightness indicates degree of lignification, which is of increasing intensity in the sclereid layer towards the sclerenchymatous layer, high in the sclerenchymatous strand itself, and low in the ‘brown tissue’ (abbreviated as ‘B.’). (m) The bi-axial, two-phase, passive-nastic movement of the Bhutan pine (Pinus wallichiana) seed cone scale. An initially wet seed scale (in frontal and lateral view, clamped with its basal part by a forceps) undergoes two successive bending deformation processes upon desiccation (at approx. 20^∘𝖢, approx. 50% RH). At the beginning (t=0) the scale is wet, straight (without any conspicuous longitudinal curvature) and possesses a notable transversal curvature by which longitudinal bending is hindered. After t=15 min, the transversal curvature alone has markedly decreased. Afterwards, the scale starts to bend longitudinally until a maximum bending angle (which depends on the extent of scale desiccation, i.e. on the environmental conditions) is achieved after t=60 min. (Online version in colour.)  \n\ntransversal curvature gradually decreases and the scale flattens without notable alterations of its longitudinal curvature. Afterwards, the scale bends longitudinally until it achieves a maximum bending angle. The functional bilayer set-up of the natural scale was the template for our 4D printed hygroscopic scale-like structures, where passive hydraulic actuation drives the tailored multi-phase bending deformation. For a better understanding of the complex movement behaviour, we performed three-dimensional (3D) deformation measurements on the natural and on the bioinspired printed scales’ surfaces.  \n\n# 2. Material and methods  \n\n# (a) Materialization and four-dimensional printing  \n\n3D printing through Fused Filament Fabrication (FFF) was applied, which works by the precise deposition of extruded molten thermoplastic polymer. The process of extrusion affects the microstructure of the polymer through the ‘alignment of the polymer molecules along the axis of deposition’  and the shear-induced alignment of any fillers within the polymer [24–26]. This unique capacity to affect the material at that scale through the controlled fabrication process has been implemented into high-performance lightweight composites , nanofibre-reinforced polymers  and wood flour composites . This inherent material capacity is instrumental in the design, control and manipulation of the hydration-mediated expansion of the responsive 3D printed layer .   \n",
+  "entities": [
+    {
+      "start_char": 0,
+      "end_char": 3,
+      "text": "4D",
+      "label": "QUALITATIVE_VALUE",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 4,
+      "end_char": 8,
+      "text": "pine",
+      "label": "PLANT",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 9,
+      "end_char": 14,
+      "text": "scale",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 15,
+      "end_char": 23,
+      "text": "biomimetic",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 24,
+      "end_char": 27,
+      "text": "4D",
+      "label": "QUALITATIVE_VALUE",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 28,
+      "end_char": 34,
+      "text": "printed",
+      "label": "PROCESS",
+      "confidence": 0.8
+    },
+    {
+      "start_char": 35,
+      "end_char": 44,
+      "text": "autonomous",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 45,
+      "end_char": 50,
+      "text": "scale",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 624,
+      "end_char": 630,
+      "text": "Motile",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 631,
+      "end_char": 637,
+      "text": "plant",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 638,
+      "end_char": 647,
+      "text": "structures",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 648,
+      "end_char": 654,
+      "text": "petals",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 655,
+      "end_char": 661,
+      "text": "leaves",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 702,
+      "end_char": 708,
+      "text": "4D",
+      "label": "QUALITATIVE_VALUE",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 709,
+      "end_char": 716,
+      "text": "printing",
+      "label": "PROCESS",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 717,
+      "end_char": 723,
+      "text": "devices",
+      "label": "DEVICE",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 1715,
+      "end_char": 1717,
+      "text": "4D",
+      "label": "QUANTITATIVE_VALUE",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 1718,
+      "end_char": 1725,
+      "text": "printed",
+      "label": "PROCESS",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 1726,
+      "end_char": 1735,
+      "text": "structures",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.92
+    },
+    {
+      "start_char": 1617,
+      "end_char": 1624,
+      "text": "Bhutan",
+      "label": "PLANT",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 1625,
+      "end_char": 1631,
+      "text": "pinecones",
+      "label": "PLANT",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 2123,
+      "end_char": 2142,
+      "text": "Bhutan pine",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 2143,
+      "end_char": 2159,
+      "text": "Pinus wallichiana",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 2160,
+      "end_char": 2169,
+      "text": "Pinaceae",
+      "label": "PLANT_TYPE",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 2264,
+      "end_char": 2270,
+      "text": "seeds",
+      "label": "BIOLOGICAL_SPECIES",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 2357,
+      "end_char": 2362,
+      "text": "sclereid",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 2367,
+      "end_char": 2386,
+      "text": "sclerenchymatous strands",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 3056,
+      "end_char": 3067,
+      "text": "desiccation",
+      "label": "PHENOMENA",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 3098,
+      "end_char": 3102,
+      "text": "cone",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 3122,
+      "end_char": 3127,
+      "text": "scales",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.92
+    },
+    {
+      "start_char": 3165,
+      "end_char": 3171,
+      "text": "forces",
+      "label": "PHYSICAL_QUANTITY",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 3194,
+      "end_char": 3199,
+      "text": "years",
+      "label": "QUANTITATIVE_VALUE",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 3220,
+      "end_char": 3229,
+      "text": "functional",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.91
+    },
+    {
+      "start_char": 3231,
+      "end_char": 3241,
+      "text": "resilience",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.89
+    },
+    {
+      "start_char": 3441,
+      "end_char": 3449,
+      "text": "pinecone",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 3450,
+      "end_char": 3455,
+      "text": "scale",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 3456,
+      "end_char": 3464,
+      "text": "functional",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 3465,
+      "end_char": 3471,
+      "text": "bilayer",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 3472,
+      "end_char": 3475,
+      "text": "set-up",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 3476,
+      "end_char": 3485,
+      "text": "sclereid",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.92
+    },
+    {
+      "start_char": 3486,
+      "end_char": 3500,
+      "text": "sclerenchymatous",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 3501,
+      "end_char": 3507,
+      "text": "tissues",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.89
+    },
+    {
+      "start_char": 4438,
+      "end_char": 4442,
+      "text": "hygroscopic",
+      "label": "MATERIAL_PROPERTY",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 4443,
+      "end_char": 4450,
+      "text": "bending",
+      "label": "MECHANICAL_PROPERTY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 4494,
+      "end_char": 4498,
+      "text": "seed",
+      "label": "PLANT",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 4499,
+      "end_char": 4504,
+      "text": "scale",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 4505,
+      "end_char": 4510,
+      "text": "Bhutan",
+      "label": "PLANT",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 4511,
+      "end_char": 4515,
+      "text": "pine",
+      "label": "PLANT",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 4542,
+      "end_char": 4546,
+      "text": "wet",
+      "label": "CONDITION",
+      "confidence": 0.8
+    },
+    {
+      "start_char": 4956,
+      "end_char": 4962,
+      "text": "Pinecone",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 4963,
+      "end_char": 4967,
+      "text": "seed",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 4968,
+      "end_char": 4973,
+      "text": "scale",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 4974,
+      "end_char": 4985,
+      "text": "functional morphology",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 4986,
+      "end_char": 4996,
+      "text": "kinematics",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 5039,
+      "end_char": 5046,
+      "text": "humidity",
+      "label": "ENVIRONMENTAL_CONDITION",
+      "confidence": 0.92
+    },
+    {
+      "start_char": 5047,
+      "end_char": 5054,
+      "text": "condition",
+      "label": "CONDITION",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 5055,
+      "end_char": 5059,
+      "text": "closed",
+      "label": "FUNCTIONALITY",
+      "confidence": 0.87
+    },
+    {
+      "start_char": 6104,
+      "end_char": 6122,
+      "text": "Bhutan pine",
+      "label": "PLANT",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 6123,
+      "end_char": 6140,
+      "text": "Pinus wallichiana",
+      "label": "BIOLOGICAL_SPECIES",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 6172,
+      "end_char": 6173,
+      "text": "20",
+      "label": "QUANTITATIVE_VALUE",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 6176,
+      "end_char": 6177,
+      "text": "50",
+      "label": "QUANTITATIVE_VALUE",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 6865,
+      "end_char": 6874,
+      "text": "transversal",
+      "label": "QUALITATIVE_VALUE",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 6875,
+      "end_char": 6883,
+      "text": "curvature",
+      "label": "PHYSICAL_QUANTITY",
+      "confidence": 0.93
+    },
+    {
+      "start_char": 6921,
+      "end_char": 6927,
+      "text": "scale",
+      "label": "STRUCTURE_ENTITY",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 6928,
+      "end_char": 6935,
+      "text": "flattens",
+      "label": "FUNCTION",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 6936,
+      "end_char": 6943,
+      "text": "alterations",
+      "label": "PHENOMENA",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 6945,
+      "end_char": 6952,
+      "text": "longitudinal",
+      "label": "QUALITATIVE_VALUE",
+      "confidence": 0.92
+    },
+    {
+      "start_char": 6953,
+      "end_char": 6960,
+      "text": "curvature",
+      "label": "PHYSICAL_QUANTITY",
+      "confidence": 0.93
+    },
+    {
+      "start_char": 6962,
+      "end_char": 6969,
+      "text": "maximum",
+      "label": "QUALITATIVE_VALUE",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 7653,
+      "end_char": 7659,
+      "text": "FFF",
+      "label": "METHOD",
+      "confidence": 0.95
+    },
+    {
+      "start_char": 7694,
+      "end_char": 7703,
+      "text": "thermoplastic",
+      "label": "MATERIAL",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 7704,
+      "end_char": 7710,
+      "text": "polymer",
+      "label": "MATERIAL",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 7781,
+      "end_char": 7788,
+      "text": "composites",
+      "label": "MATERIAL",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 7790,
+      "end_char": 7816,
+      "text": "nanofibre-reinforced",
+      "label": "MATERIAL",
+      "confidence": 0.85
+    },
+    {
+      "start_char": 7818,
+      "end_char": 7825,
+      "text": "polymers",
+      "label": "MATERIAL",
+      "confidence": 0.9
+    },
+    {
+      "start_char": 7830,
+      "end_char": 7845,
+      "text": "wood flour",
+      "label": "MATERIAL",
+      "confidence": 0.88
+    },
+    {
+      "start_char": 7846,
+      "end_char": 7855,
+      "text": "composites",
+      "label": "MATERIAL",
+      "confidence": 0.85
+    }
+  ]
+}
