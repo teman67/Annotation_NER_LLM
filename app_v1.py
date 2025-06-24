@@ -266,24 +266,92 @@ def chunk_text(text: str, chunk_size: int):
         start = split_pos
     return chunks
 
-def parse_llm_response(response_text: str):
+def parse_llm_response(response_text: str, chunk_index: int = None):
     """
-    Parse the JSON returned by LLM.
+    Parse the JSON returned by LLM with improved error handling.
     Returns list of entities or empty list on error.
     """
-    try:
-        # Some LLMs may wrap JSON inside extra text, try to extract JSON array by first [ and last ]
-        first_bracket = response_text.find('[')
-        last_bracket = response_text.rfind(']')
-        json_str = response_text[first_bracket:last_bracket+1]
-        entities = json.loads(json_str)
-        # Validate entity keys
-        if not all(set(ent.keys()) >= {"start_char", "end_char", "text", "label"} for ent in entities):
-            st.warning("Warning: Some entities missing required keys")
-        return entities
-    except Exception as e:
-        st.error(f"Failed to parse LLM output JSON: {e}")
+    # Log the raw response for debugging
+    if chunk_index is not None:
+        st.write(f"**Debug - Chunk {chunk_index} Raw Response:**")
+        with st.expander(f"Raw Response Content (Chunk {chunk_index})", expanded=False):
+            st.text(repr(response_text))  # Use repr to show exact content including whitespace
+    
+    # Check if response is empty or None
+    if not response_text or response_text.strip() == "":
+        st.warning(f"⚠️ Empty response from LLM for chunk {chunk_index if chunk_index else 'unknown'}")
         return []
+    
+    # Clean the response text
+    response_text = response_text.strip()
+    
+    try:
+        # Method 1: Try direct JSON parsing first
+        entities = json.loads(response_text)
+        if isinstance(entities, list):
+            # Validate entity structure
+            valid_entities = []
+            for ent in entities:
+                if isinstance(ent, dict) and all(key in ent for key in ["start_char", "end_char", "text", "label"]):
+                    valid_entities.append(ent)
+                else:
+                    st.warning(f"Invalid entity structure: {ent}")
+            return valid_entities
+        else:
+            st.warning(f"Response is not a list: {type(entities)}")
+            return []
+            
+    except json.JSONDecodeError:
+        # Method 2: Try to extract JSON array from text
+        try:
+            first_bracket = response_text.find('[')
+            last_bracket = response_text.rfind(']')
+            
+            if first_bracket == -1 or last_bracket == -1 or first_bracket >= last_bracket:
+                raise ValueError("No valid JSON array found")
+                
+            json_str = response_text[first_bracket:last_bracket+1]
+            entities = json.loads(json_str)
+            
+            # Validate entity keys
+            valid_entities = []
+            for ent in entities:
+                if isinstance(ent, dict) and all(key in ent for key in ["start_char", "end_char", "text", "label"]):
+                    valid_entities.append(ent)
+                else:
+                    st.warning(f"Invalid entity structure: {ent}")
+            
+            if len(valid_entities) != len(entities):
+                st.warning(f"Some entities were invalid and filtered out")
+            
+            return valid_entities
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # Method 3: Try to find and parse multiple JSON objects
+            try:
+                # Look for individual JSON objects
+                import re
+                json_objects = re.findall(r'\{[^{}]*\}', response_text)
+                entities = []
+                for obj_str in json_objects:
+                    try:
+                        obj = json.loads(obj_str)
+                        if all(key in obj for key in ["start_char", "end_char", "text", "label"]):
+                            entities.append(obj)
+                    except:
+                        continue
+                
+                if entities:
+                    st.info(f"Recovered {len(entities)} entities from malformed response")
+                    return entities
+                    
+            except Exception:
+                pass
+            
+            # Final fallback: Log error and return empty
+            st.error(f"Failed to parse LLM output JSON for chunk {chunk_index if chunk_index else 'unknown'}: {e}")
+            st.error(f"Raw response preview: {response_text[:200]}...")
+            return []
 
 def aggregate_entities(all_entities, offset):
     """
