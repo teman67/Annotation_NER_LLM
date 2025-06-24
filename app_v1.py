@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import io
@@ -10,6 +8,7 @@ from prompts_flat import build_annotation_prompt
 from llm_clients import LLMClient
 import html
 import time
+import streamlit.components.v1 as components
 
 # ----- Page Setup -----
 st.set_page_config(page_title="LLM-based Scientific Text Annotator", layout="wide")
@@ -563,56 +562,92 @@ if 'annotated_entities' in st.session_state and st.session_state.annotated_entit
         st.session_state.label_colors
     )
 
-    styled_html = f"""
-    <style>
-        .annotation-container {{
-            font-family: Arial, sans-serif;
-            font-size: 16px;
-            line-height: 1.7;
-            padding: 20px;
-            background-color: #f9f9f9;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }}
+    # Create a complete HTML document with inline CSS and JavaScript
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            .annotation-container {{
+                font-family: Arial, sans-serif;
+                font-size: 16px;
+                line-height: 1.7;
+                padding: 20px;
+                background-color: #f9f9f9;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+                margin: 10px 0;
+            }}
+            
+            .annotation-container span[data-tooltip] {{
+                position: relative;
+                cursor: help;
+                transition: all 0.2s ease;
+            }}
+            
+            .annotation-container span[data-tooltip]:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            }}
+            
+            .tooltip {{
+                visibility: hidden;
+                position: absolute;
+                bottom: 125%;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: #333;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: normal;
+                white-space: nowrap;
+                z-index: 1000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                opacity: 0;
+                transition: opacity 0.3s, visibility 0.3s;
+            }}
+            
+            .tooltip::after {{
+                content: '';
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                margin-left: -6px;
+                border-width: 6px;
+                border-style: solid;
+                border-color: #333 transparent transparent transparent;
+            }}
+            
+            .annotation-container span[data-tooltip]:hover .tooltip {{
+                visibility: visible;
+                opacity: 1;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="annotation-container">
+            {highlighted_html.replace('data-tooltip="', 'data-tooltip="').replace('">', '"><span class="tooltip"></span>')}
+        </div>
         
-        .annotation-container span[data-tooltip] {{
-            position: relative;
-            cursor: help;
-        }}
-        
-        .annotation-container span[data-tooltip]:hover::after {{
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #333;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: normal;
-            white-space: nowrap;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }}
-        
-        .annotation-container span[data-tooltip]:hover::before {{
-            content: '';
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%) translateY(100%);
-            border: 6px solid transparent;
-            border-top-color: #333;
-            z-index: 1000;
-        }}
-    </style>
-    <div class="annotation-container">
-        {highlighted_html}
-    </div>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {{
+                const spans = document.querySelectorAll('span[data-tooltip]');
+                spans.forEach(span => {{
+                    const tooltip = span.querySelector('.tooltip');
+                    if (tooltip) {{
+                        tooltip.textContent = span.getAttribute('data-tooltip');
+                    }}
+                }});
+            }});
+        </script>
+    </body>
+    </html>
     """
-    st.markdown(styled_html, unsafe_allow_html=True)
+    
+    # Use Streamlit's HTML component to render the complete HTML
+    components.html(full_html, height=400, scrolling=True)
     
 
 # Display and edit results (outside of button click)
