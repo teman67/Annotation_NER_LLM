@@ -143,7 +143,6 @@ if 'annotated_entities' not in st.session_state:
 if 'annotation_complete' not in st.session_state:
     st.session_state.annotation_complete = False
 
-# ----- Sidebar -----
 st.sidebar.header("🔐 API Configuration")
 
 api_key = st.sidebar.text_input("Paste your API key", type="password")
@@ -157,9 +156,52 @@ if model_provider == "OpenAI":
 else:
     model = st.sidebar.selectbox("Claude model", ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"])
 
-temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 0.1, step=0.05)
-chunk_size = st.sidebar.slider("Chunk size (in characters)", 200, 4000, 1000, step=100)
-max_tokens = st.sidebar.slider("Max tokens per response", 200, 6000, 1000, step=100)
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔧 Processing Parameters")
+
+temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 0.1, step=0.05, 
+                                help="Lower = more consistent, Higher = more creative")
+
+chunk_size = st.sidebar.slider("Chunk size (characters)", 200, 4000, 1000, step=100,
+                              help="Size of text chunks to process separately")
+
+# Dynamic token calculation based on chunk size
+def get_token_recommendations(chunk_size):
+    if chunk_size <= 500:
+        return 200, 800, 300
+    elif chunk_size <= 1000:
+        return 300, 1200, 400
+    elif chunk_size <= 2000:
+        return 500, 1800, 1000
+    elif chunk_size <= 3000:
+        return 700, 2500, 1400
+    else:
+        return 1000, 3000, 1800
+
+min_tokens, max_tokens_limit, default_tokens = get_token_recommendations(chunk_size)
+
+max_tokens = st.sidebar.slider(
+    "Max tokens per response", 
+    min_tokens, 
+    max_tokens_limit, 
+    default_tokens, 
+    step=50,
+    help=f"Recommended: {default_tokens} tokens for {chunk_size} character chunks"
+)
+
+# Show the relationship
+st.sidebar.info(f"""
+**Current Settings:**
+- Chunk: {chunk_size:,} chars (~{chunk_size//4:,} tokens input)
+- Response: {max_tokens:,} tokens max output
+- Ratio: {max_tokens/(chunk_size//4):.1f}x output/input
+""")
+
+# Warning if settings seem problematic
+if max_tokens > chunk_size // 2:
+    st.sidebar.warning("⚠️ Max tokens seems very high for this chunk size")
+elif max_tokens < chunk_size // 20:
+    st.sidebar.warning("⚠️ Max tokens might be too low - responses may get cut off")
 
 st.sidebar.markdown("---")
 clean_text = st.sidebar.checkbox("Clean text input (remove weird characters)", value=True)
