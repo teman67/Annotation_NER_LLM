@@ -366,6 +366,12 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
         st.error("❌ Tag CSV missing")
     else:
         try:
+            # Clear previous annotation results when starting new annotation
+            st.session_state.annotated_entities = []
+            st.session_state.annotation_complete = False
+            if 'editable_entities_df' in st.session_state:
+                del st.session_state.editable_entities_df
+            
             st.markdown("### 🚀 Starting Annotation Process")
             
             client = LLMClient(
@@ -431,52 +437,6 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
                 
                 with st.expander("📊 Entity Distribution by Label", expanded=False):
                     st.bar_chart(label_counts)
-
-            # FIXED: Update the DataFrame creation section
-            if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
-                st.header("📝 Edit Annotations")
-
-                # Initialize or reload dataframe from session state, including ID column
-                if "editable_entities_df" not in st.session_state:
-                    # FIXED: Filter out invalid entities before creating DataFrame
-                    valid_entities = []
-                    for e in st.session_state.annotated_entities:
-                        # Check if entity has all required fields
-                        required_fields = ['start_char', 'end_char', 'text', 'label']
-                        if all(field in e and e[field] is not None for field in required_fields):
-                            # Additional validation
-                            if (isinstance(e['start_char'], (int, float)) and 
-                                isinstance(e['end_char'], (int, float)) and
-                                e['start_char'] >= 0 and 
-                                e['end_char'] > e['start_char'] and
-                                isinstance(e['text'], str) and 
-                                len(e['text'].strip()) > 0):
-                                valid_entities.append(e)
-                            else:
-                                st.warning(f"Filtered out invalid entity: {e}")
-                        else:
-                            st.warning(f"Filtered out entity missing required fields: {e}")
-                    
-                    if len(valid_entities) != len(st.session_state.annotated_entities):
-                        st.warning(f"⚠️ Filtered out {len(st.session_state.annotated_entities) - len(valid_entities)} invalid entities")
-                        st.session_state.annotated_entities = valid_entities
-                    
-                    try:
-                        df_entities = pd.DataFrame(valid_entities)
-                        if not df_entities.empty:
-                            df_entities.insert(0, "ID", range(len(df_entities)))
-                            st.session_state.editable_entities_df = df_entities
-                            st.success(f"✅ Created DataFrame with {len(df_entities)} valid entities")
-                        else:
-                            st.error("❌ No valid entities to display")
-                            st.session_state.editable_entities_df = pd.DataFrame()
-                    except Exception as e:
-                        st.error(f"Error creating DataFrame: {e}")
-                        st.session_state.editable_entities_df = pd.DataFrame()
-                else:
-                    df_entities = st.session_state.editable_entities_df
-
-                # Rest of your code continues...
             
             st.success(f"🎯 Annotation completed! Found {len(entities)} entities total.")
 
@@ -555,9 +515,41 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
 
     # Initialize or reload dataframe from session state, including ID column
     if "editable_entities_df" not in st.session_state:
-        df_entities = pd.DataFrame(st.session_state.annotated_entities)
-        df_entities.insert(0, "ID", range(len(df_entities)))
-        st.session_state.editable_entities_df = df_entities
+        # FIXED: Filter out invalid entities before creating DataFrame
+        valid_entities = []
+        for e in st.session_state.annotated_entities:
+            # Check if entity has all required fields
+            required_fields = ['start_char', 'end_char', 'text', 'label']
+            if all(field in e and e[field] is not None for field in required_fields):
+                # Additional validation
+                if (isinstance(e['start_char'], (int, float)) and 
+                    isinstance(e['end_char'], (int, float)) and
+                    e['start_char'] >= 0 and 
+                    e['end_char'] > e['start_char'] and
+                    isinstance(e['text'], str) and 
+                    len(e['text'].strip()) > 0):
+                    valid_entities.append(e)
+                else:
+                    st.warning(f"Filtered out invalid entity: {e}")
+            else:
+                st.warning(f"Filtered out entity missing required fields: {e}")
+        
+        if len(valid_entities) != len(st.session_state.annotated_entities):
+            st.warning(f"⚠️ Filtered out {len(st.session_state.annotated_entities) - len(valid_entities)} invalid entities")
+            st.session_state.annotated_entities = valid_entities
+        
+        try:
+            df_entities = pd.DataFrame(valid_entities)
+            if not df_entities.empty:
+                df_entities.insert(0, "ID", range(len(df_entities)))
+                st.session_state.editable_entities_df = df_entities
+                st.success(f"✅ Created DataFrame with {len(df_entities)} valid entities")
+            else:
+                st.error("❌ No valid entities to display")
+                st.session_state.editable_entities_df = pd.DataFrame()
+        except Exception as e:
+            st.error(f"Error creating DataFrame: {e}")
+            st.session_state.editable_entities_df = pd.DataFrame()
     else:
         df_entities = st.session_state.editable_entities_df
 
@@ -602,9 +594,9 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
         else:
             st.warning("Please select annotation ID(s) to remove.")
 
-
-    # Update annotated_entities if edited_df changed but no delete triggered
-    else:
+    # FIXED: Only update annotated_entities when user actually made changes
+    # Check if the edited_df is different from what we started with
+    if not edited_df.equals(df_entities):
         st.session_state.annotated_entities = edited_df.drop(columns=["ID"]).to_dict(orient="records")
 
     # Optional clear all button
