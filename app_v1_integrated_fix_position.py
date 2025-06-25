@@ -480,6 +480,12 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
             st.session_state.annotation_complete = False
             if 'editable_entities_df' in st.session_state:
                 del st.session_state.editable_entities_df
+
+            # Clear validation and fix results
+            if 'validation_results' in st.session_state:
+                del st.session_state.validation_results
+            if 'fix_results' in st.session_state:
+                del st.session_state.fix_results
             
             st.markdown("### 🚀 Starting Annotation Process")
             
@@ -744,14 +750,7 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
     if not edited_df.equals(df_entities):
         st.session_state.annotated_entities = edited_df.drop(columns=["ID"]).to_dict(orient="records")
 
-    # Optional clear all button
-    if st.button("🧹 Clear All Annotations"):
-        st.session_state.annotated_entities = []
-        st.session_state.editable_entities_df = pd.DataFrame()
-        st.session_state.annotation_complete = False
-        st.rerun()
-
-
+    
 # Download annotated JSON (outside of button click)
 # Add these functions to your Streamlit app (after the existing functions)
 
@@ -1012,12 +1011,14 @@ def fix_annotation_positions_streamlit(text, entities, strategy='closest'):
 
 # Replace the existing "💾 Export Results" section with this enhanced version:
 
+# Replace the validation button section with this code:
+st.markdown("---")
 # Download annotated JSON (outside of button click)
 if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
-    st.header("💾 Export Results")
+    
     
     # Add validation and fixing section
-    st.subheader("🔍 Validate & Fix Annotations")
+    st.subheader("🔍 Validate & Fix Annotations Position")
     
     col1, col2 = st.columns(2)
     
@@ -1031,49 +1032,62 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
                 
                 # Store validation results in session state
                 st.session_state.validation_results = validation_results
+    
+    # Display validation results if they exist (outside the button click)
+    if st.session_state.get('validation_results'):
+        validation_results = st.session_state.validation_results
+        
+        # Display validation summary
+        st.markdown("### 📊 Validation Results")
+        
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.metric("Total Entities", validation_results['total_entities'])
+        with col_b:
+            st.metric("Correct", validation_results['correct_entities'], 
+                     delta=f"{validation_results['correct_entities']/validation_results['total_entities']*100:.1f}%")
+        with col_c:
+            st.metric("Errors", len(validation_results['errors']))
+        with col_d:
+            st.metric("Warnings", len(validation_results['warnings']))
+        
+        # Show errors if any
+        if validation_results['errors']:
+            st.error(f"❌ Found {len(validation_results['errors'])} annotation errors!")
+            
+            with st.expander("📋 View Error Details", expanded=False):
+                error_data = []
+                for error in validation_results['errors'][:100]:  # Show first 100 errors
+                    error_data.append({
+                        "Index": error['entity_index'],
+                        "Expected Text": error['expected_text'],
+                        "Actual Text": error.get('actual_text', 'N/A'),
+                        "Position": f"[{error['start_char']}:{error['end_char']}]",
+                        "Label": error['label'],
+                        "Error": error.get('error', 'Text mismatch')
+                    })
                 
-                # Display validation summary
-                st.markdown("### 📊 Validation Results")
+                if error_data:
+                    st.dataframe(pd.DataFrame(error_data), use_container_width=True)
                 
-                col_a, col_b, col_c, col_d = st.columns(4)
-                with col_a:
-                    st.metric("Total Entities", validation_results['total_entities'])
-                with col_b:
-                    st.metric("Correct", validation_results['correct_entities'], 
-                             delta=f"{validation_results['correct_entities']/validation_results['total_entities']*100:.1f}%")
-                with col_c:
-                    st.metric("Errors", len(validation_results['errors']))
-                with col_d:
-                    st.metric("Warnings", len(validation_results['warnings']))
+                if len(validation_results['errors']) > 100:
+                    st.info(f"Showing first 100 of {len(validation_results['errors'])} errors.")
+        
+        # Show warnings if any
+        if validation_results['warnings']:
+            st.warning(f"⚠️ Found {len(validation_results['warnings'])} warnings!")
+    
+            with st.expander("⚠️ View Warning Details", expanded=False):
+                for i, warning in enumerate(validation_results['warnings']):
+                    if warning.get('type') == 'overlap':
+                        st.write(f"**Overlap {i+1}:**")
+                        st.write(f"- Entity 1: '{warning['entity1']['text']}' [{warning['entity1']['start_char']}:{warning['entity1']['end_char']}]")
+                        st.write(f"- Entity 2: '{warning['entity2']['text']}' [{warning['entity2']['start_char']}:{warning['entity2']['end_char']}]")
+                    else:
+                        st.write(f"**Zero-length annotation {i+1}:** {warning}")
                 
-                # Show errors if any
-                if validation_results['errors']:
-                    st.error(f"❌ Found {len(validation_results['errors'])} annotation errors!")
-                    
-                    with st.expander("📋 View Error Details", expanded=False):
-                        error_data = []
-                        for error in validation_results['errors'][:10]:  # Show first 10 errors
-                            error_data.append({
-                                "Index": error['entity_index'],
-                                "Expected Text": error['expected_text'],
-                                "Actual Text": error.get('actual_text', 'N/A'),
-                                "Position": f"[{error['start_char']}:{error['end_char']}]",
-                                "Label": error['label'],
-                                "Error": error.get('error', 'Text mismatch')
-                            })
-                        
-                        if error_data:
-                            st.dataframe(pd.DataFrame(error_data), use_container_width=True)
-                        
-                        if len(validation_results['errors']) > 10:
-                            st.info(f"Showing first 10 of {len(validation_results['errors'])} errors.")
-                
-                # Show warnings if any
-                if validation_results['warnings']:
-                    st.warning(f"⚠️ Found {len(validation_results['warnings'])} warnings (overlaps, zero-length annotations)!")
-                
-                if not validation_results['errors']:
-                    st.success("✅ All annotations are valid!")
+        if not validation_results['errors']:
+            st.success("✅ All position of the annotations are valid!")
     
     with col2:
         # Only show fix button if validation has been run and there are errors
@@ -1082,7 +1096,7 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
             
             fix_strategy = st.selectbox(
                 "Fix Strategy", 
-                ["closest", "first"],
+                ["first" , "closest"],
                 help="closest: Choose position closest to original | first: Use first occurrence found"
             )
             
@@ -1107,42 +1121,53 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
                         except:
                             pass  # If DataFrame creation fails, just skip
                     
-                    # Display fix results
-                    st.markdown("### 🔧 Fix Results")
-                    
-                    col_a, col_b, col_c, col_d = st.columns(4)
-                    with col_a:
-                        st.metric("Total", fix_stats['total'])
-                    with col_b:
-                        st.metric("Already Correct", fix_stats['already_correct'])
-                    with col_c:
-                        st.metric("Fixed", fix_stats['fixed'], 
-                                 delta=f"{fix_stats['fixed']/fix_stats['total']*100:.1f}%")
-                    with col_d:
-                        st.metric("Unfixable", fix_stats['unfixable'])
-                    
-                    success_rate = (fix_stats['already_correct'] + fix_stats['fixed']) / fix_stats['total'] * 100
-                    
-                    if fix_stats['fixed'] > 0:
-                        st.success(f"🎉 Successfully fixed {fix_stats['fixed']} annotations! Overall success rate: {success_rate:.1f}%")
-                    
-                    if fix_stats['unfixable'] > 0:
-                        st.warning(f"⚠️ Could not fix {fix_stats['unfixable']} annotations. Manual review may be needed.")
-                    
-                    if fix_stats['multiple_matches'] > 0:
-                        st.info(f"ℹ️ {fix_stats['multiple_matches']} annotations had multiple possible positions. Used '{fix_strategy}' strategy.")
+                    # Store fix results in session state
+                    st.session_state.fix_results = fix_stats
                     
                     # Clear validation results to allow re-validation
                     if 'validation_results' in st.session_state:
                         del st.session_state.validation_results
                     
-                    st.info("💡 You can now re-validate to check if all issues were resolved!")
-                    
-                    # Force refresh of the highlighted text display
                     st.rerun()
     
-    st.markdown("---")
+    # Display fix results if they exist (outside the button click)
+    if st.session_state.get('fix_results'):
+        fix_stats = st.session_state.fix_results
+        
+        # Display fix results
+        st.markdown("### 🔧 Fix Results")
+        
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.metric("Total", fix_stats['total'])
+        with col_b:
+            st.metric("Already Correct", fix_stats['already_correct'])
+        with col_c:
+            st.metric("Fixed", fix_stats['fixed'], 
+                     delta=f"{fix_stats['fixed']/fix_stats['total']*100:.1f}%")
+        with col_d:
+            st.metric("Unfixable", fix_stats['unfixable'])
+        
+        success_rate = (fix_stats['already_correct'] + fix_stats['fixed']) / fix_stats['total'] * 100
+        
+        if fix_stats['fixed'] > 0:
+            st.success(f"🎉 Successfully fixed {fix_stats['fixed']} annotations! Overall success rate: {success_rate:.1f}%")
+        
+        if fix_stats['unfixable'] > 0:
+            st.warning(f"⚠️ Could not fix {fix_stats['unfixable']} annotations. Manual review may be needed.")
+        
+        if fix_stats['multiple_matches'] > 0:
+            st.info(f"ℹ️ {fix_stats['multiple_matches']} annotations had multiple possible positions. Used fix strategy.")
+        
+        st.info("💡 You can now re-validate to check if all issues were resolved!")
+        
+        # Clear fix results after displaying
+        if st.button("Clear Fix Results", key="clear_fix_results"):
+            del st.session_state.fix_results
+            st.rerun()
     
+    st.markdown("---")
+    st.header("💾 Export Results")
     # Original download functionality
     output_json = {
         "text": st.session_state.get("text_data", ""),
@@ -1157,3 +1182,12 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
         mime="application/json",
         key="download_json_btn"
     )
+    st.markdown("---")
+    
+
+    # Optional clear all button
+    if st.button("🧹 Clear All Annotations"):
+        st.session_state.annotated_entities = []
+        st.session_state.editable_entities_df = pd.DataFrame()
+        st.session_state.annotation_complete = False
+        st.rerun()
