@@ -153,7 +153,7 @@ st.session_state.model_provider = model_provider
 if model_provider == "OpenAI":
     model = st.sidebar.selectbox("OpenAI model", ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"])
 else:
-    model = st.sidebar.selectbox("Claude model", ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"])
+    model = st.sidebar.selectbox("Claude model", ["claude-3-7-sonnet-20250219", "claude-3-5-haiku-20241022"])
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔧 Processing Parameters")
