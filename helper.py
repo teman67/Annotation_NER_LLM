@@ -566,3 +566,470 @@ def fix_annotation_positions_streamlit(text, entities, strategy='closest'):
     fix_status.empty()
     
     return fixed_entities, stats
+
+
+def evaluate_annotations_with_llm(entities, tag_df, client, temperature=0.1, max_tokens=2000):
+    """
+    Use LLM to evaluate whether annotations match their label definitions.
+    FIXED VERSION with better error handling and entity tracking.
+    """
+    if not entities:
+        st.warning("No entities to evaluate")
+        return []
+        
+    from prompts_flat import build_evaluation_prompt
+    
+    # Split entities into batches if too many (to avoid token limits)
+    batch_size = 20  # REDUCED from 50 to ensure better processing
+    all_evaluations = []
+    
+    entity_batches = [entities[i:i + batch_size] for i in range(0, len(entities), batch_size)]
+    
+    st.write(f"📊 Processing {len(entities)} entities in {len(entity_batches)} batches...")
+    
+    for batch_idx, entity_batch in enumerate(entity_batches):
+        st.write(f"🤖 Evaluating batch {batch_idx + 1}/{len(entity_batches)} ({len(entity_batch)} entities)...")
+        
+        try:
+            prompt = build_evaluation_prompt(tag_df, entity_batch)
+            
+            with st.spinner(f"LLM evaluating batch {batch_idx + 1}..."):
+                response = client.generate(prompt, temperature=temperature, max_tokens=max_tokens)
+                
+                # Debug: Show raw response
+                with st.expander(f"🔍 Debug: Batch {batch_idx + 1} Raw Response", expanded=False):
+                    st.text(f"Response length: {len(response) if response else 0} characters")
+                    st.code(response[:500] + "..." if len(response) > 500 else response, language="text")
+                
+                batch_evaluations = parse_evaluation_response(response, batch_idx)
+                
+                # CRITICAL FIX: Ensure we have evaluation for each entity in batch
+                if len(batch_evaluations) != len(entity_batch):
+                    st.warning(f"⚠️ Batch {batch_idx + 1}: Expected {len(entity_batch)} evaluations, got {len(batch_evaluations)}")
+                    
+                    # Fill missing evaluations with default values
+                    for i in range(len(entity_batch)):
+                        global_entity_idx = batch_idx * batch_size + i
+                        
+                        # Check if we have evaluation for this entity
+                        found_eval = False
+                        for eval_result in batch_evaluations:
+                            if eval_result.get('entity_index') == i:  # Local batch index
+                                # Update to global index
+                                eval_result['entity_index'] = global_entity_idx
+                                found_eval = True
+                                break
+                        
+                        # If no evaluation found, create a default one
+                        if not found_eval:
+                            entity = entity_batch[i]
+                            default_eval = {
+                                'entity_index': global_entity_idx,
+                                'current_text': entity.get('text', ''),
+                                'current_label': entity.get('label', ''),
+                                'is_correct': False,  # Conservative default
+                                'recommendation': 'manual_review',
+                                'reasoning': 'LLM evaluation failed - requires manual review',
+                                'suggested_label': entity.get('label', ''),
+                                'confidence': 0.0
+                            }
+                            batch_evaluations.append(default_eval)
+                            st.warning(f"Created default evaluation for entity {global_entity_idx}")
+                else:
+                    # Update entity indices to global indices
+                    for i, eval_result in enumerate(batch_evaluations):
+                        # eval_result['entity_index'] = batch_idx * batch_size + eval_result.get('entity_index', i)
+                        eval_result['entity_index'] = batch_idx * batch_size + i
+                
+                all_evaluations.extend(batch_evaluations)
+                st.success(f"✅ Batch {batch_idx + 1} completed! Processed {len(batch_evaluations)} evaluations.")
+                
+        except Exception as e:
+            st.error(f"❌ Batch {batch_idx + 1} failed: {e}")
+            
+            # Create default evaluations for failed batch
+            for i, entity in enumerate(entity_batch):
+                global_entity_idx = batch_idx * batch_size + i
+                default_eval = {
+                    'entity_index': global_entity_idx,
+                    'current_text': entity.get('text', ''),
+                    'current_label': entity.get('label', ''),
+                    'is_correct': False,
+                    'recommendation': 'manual_review',
+                    'reasoning': f'Batch evaluation failed: {str(e)}',
+                    'suggested_label': entity.get('label', ''),
+                    'confidence': 0.0
+                }
+                all_evaluations.append(default_eval)
+            
+            st.warning(f"Created {len(entity_batch)} default evaluations for failed batch")
+    
+    # FINAL VERIFICATION: Ensure we have evaluation for every entity
+    if len(all_evaluations) != len(entities):
+        st.error(f"❌ CRITICAL: Expected {len(entities)} evaluations, got {len(all_evaluations)}")
+        
+        # Find missing entities and create default evaluations
+        evaluated_indices = set(eval_result.get('entity_index', -1) for eval_result in all_evaluations)
+        missing_indices = set(range(len(entities))) - evaluated_indices
+        
+        if missing_indices:
+            st.warning(f"Creating default evaluations for {len(missing_indices)} missing entities: {sorted(missing_indices)}")
+            
+            for entity_idx in missing_indices:
+                if entity_idx < len(entities):
+                    entity = entities[entity_idx]
+                    default_eval = {
+                        'entity_index': entity_idx,
+                        'current_text': entity.get('text', ''),
+                        'current_label': entity.get('label', ''),
+                        'is_correct': False,
+                        'recommendation': 'manual_review',
+                        'reasoning': 'Missing from LLM evaluation - requires manual review',
+                        'suggested_label': entity.get('label', ''),
+                        'confidence': 0.0
+                    }
+                    all_evaluations.append(default_eval)
+        
+        # Sort evaluations by entity_index to maintain order
+        all_evaluations.sort(key=lambda x: x.get('entity_index', 0))
+    
+    st.success(f"🎉 Evaluation completed! Generated {len(all_evaluations)} evaluations for {len(entities)} entities.")
+    return all_evaluations
+
+
+def parse_evaluation_response(response_text: str, batch_idx: int = None) -> list:
+    """
+    Parse the evaluation JSON response from LLM.
+    ENHANCED VERSION with better error handling and recovery.
+    """
+    if not response_text or response_text.strip() == "":
+        st.warning(f"⚠️ Empty evaluation response from LLM for batch {batch_idx if batch_idx is not None else 'unknown'}")
+        return []
+    
+    response_text = response_text.strip()
+    
+    try:
+        # Method 1: Try direct JSON parsing first
+        evaluations = json.loads(response_text)
+        if isinstance(evaluations, list):
+            valid_evaluations = validate_evaluation_structure(evaluations)
+            if valid_evaluations:
+                return valid_evaluations
+        else:
+            st.warning(f"Evaluation response is not a list: {type(evaluations)}")
+            
+    except json.JSONDecodeError:
+        pass
+    
+    # Method 2: Try to extract JSON from markdown code blocks
+    try:
+        import re
+        
+        # Look for JSON content between ```json and ``` or ``` and ```
+        json_patterns = [
+            r'```json\s*(\[.*?\])\s*```',
+            r'```\s*(\[.*?\])\s*```',
+            r'(\[(?:[^[\]]*|\[[^[\]]*\])*\])'  # Find any JSON array
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, response_text, re.DOTALL)
+            for match in matches:
+                try:
+                    evaluations = json.loads(match.strip())
+                    if isinstance(evaluations, list):
+                        valid_evaluations = validate_evaluation_structure(evaluations)
+                        if valid_evaluations:
+                            st.info(f"Recovered {len(valid_evaluations)} evaluations using pattern matching")
+                            return valid_evaluations
+                except json.JSONDecodeError:
+                    continue
+                    
+    except Exception as e:
+        st.warning(f"Pattern matching failed: {e}")
+    
+    # Method 3: Try to find and parse individual JSON objects
+    try:
+        import re
+        json_objects = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text)
+        entities = []
+        for obj_str in json_objects:
+            try:
+                obj = json.loads(obj_str)
+                if is_valid_evaluation_object(obj):
+                    entities.append(obj)
+            except:
+                continue
+        
+        if entities:
+            st.info(f"Recovered {len(entities)} evaluations from individual JSON objects")
+            return entities
+                
+    except Exception:
+        pass
+    
+    # Final fallback: Log error and return empty
+    st.error(f"❌ Failed to parse evaluation response for batch {batch_idx if batch_idx is not None else 'unknown'}")
+    
+    # Show debugging info
+    with st.expander(f"🔍 Debug Response Content (Batch {batch_idx})", expanded=False):
+        st.text("Full raw response:")
+        st.code(response_text, language="text")
+        st.text(f"Response length: {len(response_text)} characters")
+        st.text(f"First 200 chars: {repr(response_text[:200])}")
+    
+    return []
+
+
+def validate_evaluation_structure(evaluations: list) -> list:
+    """
+    Validate and clean evaluation results structure.
+    """
+    valid_evaluations = []
+    required_fields = ["entity_index", "current_text", "current_label", "is_correct", "recommendation"]
+    
+    for i, eval_result in enumerate(evaluations):
+        if not isinstance(eval_result, dict):
+            st.warning(f"Evaluation {i} is not a dictionary: {type(eval_result)}")
+            continue
+            
+        # Check required fields
+        missing_fields = [field for field in required_fields if field not in eval_result]
+        if missing_fields:
+            st.warning(f"Evaluation {i} missing fields: {missing_fields}")
+            
+            # Try to fill missing fields with defaults
+            if 'entity_index' not in eval_result:
+                eval_result['entity_index'] = i
+            if 'current_text' not in eval_result:
+                eval_result['current_text'] = 'Unknown'
+            if 'current_label' not in eval_result:
+                eval_result['current_label'] = 'Unknown'
+            if 'is_correct' not in eval_result:
+                eval_result['is_correct'] = False
+            if 'recommendation' not in eval_result:
+                eval_result['recommendation'] = 'manual_review'
+        
+        # Ensure proper data types
+        try:
+            eval_result['entity_index'] = int(eval_result.get('entity_index', i))
+            eval_result['is_correct'] = bool(eval_result.get('is_correct', False))
+        except (ValueError, TypeError):
+            st.warning(f"Data type issues in evaluation {i}, using defaults")
+            eval_result['entity_index'] = i
+            eval_result['is_correct'] = False
+        
+        valid_evaluations.append(eval_result)
+    
+    return valid_evaluations
+
+
+def is_valid_evaluation_object(obj: dict) -> bool:
+    """
+    Check if an object has the minimum required fields for an evaluation.
+    """
+    required_fields = ["entity_index", "current_text", "current_label", "is_correct", "recommendation"]
+    return all(field in obj for field in required_fields)
+
+def clear_all_previous_data():
+    """Clear all previous annotation and evaluation data when starting new annotation."""
+    # Clear annotation data
+    st.session_state.annotated_entities = []
+    st.session_state.annotation_complete = False
+    if 'editable_entities_df' in st.session_state:
+        del st.session_state.editable_entities_df
+
+    # Clear validation and fix results
+    if 'validation_results' in st.session_state:
+        del st.session_state.validation_results
+    if 'fix_results' in st.session_state:
+        del st.session_state.fix_results
+    
+    # Clear evaluation data (NEW)
+    st.session_state.evaluation_results = []
+    st.session_state.evaluation_complete = False
+    st.session_state.evaluation_summary = {}
+
+def apply_evaluation_recommendations(entities, evaluations, selected_indices):
+    """
+    Apply selected evaluation recommendations to entities.
+    Returns updated entities and list of changes made.
+    """
+    if not entities:
+        return [], ["No entities to process"]
+    
+    if not evaluations:
+        return entities, ["No evaluations available"]
+    
+    updated_entities = entities.copy()
+    changes_made = []
+    entities_to_delete = []  # Use list to maintain order
+    
+    # Process all recommendations first (for label changes)
+    for eval_idx in selected_indices:
+        if eval_idx < len(evaluations):
+            evaluation = evaluations[eval_idx]
+            entity_idx = evaluation.get('entity_index')
+            
+            if entity_idx is None or entity_idx >= len(updated_entities):
+                changes_made.append(f"Warning: Invalid entity index {entity_idx}")
+                continue
+                
+            recommendation = evaluation.get('recommendation', '')
+            current_text = updated_entities[entity_idx].get('text', 'Unknown')
+            
+            if recommendation == 'change_label' and evaluation.get('suggested_label'):
+                # Change the label
+                old_label = updated_entities[entity_idx].get('label', 'Unknown')
+                new_label = evaluation['suggested_label']
+                updated_entities[entity_idx]['label'] = new_label
+                changes_made.append(f"Changed '{current_text}' from '{old_label}' to '{new_label}'")
+                
+            # elif recommendation == 'delete':
+            #     # Mark for deletion (will delete later)
+            #     entities_to_delete.append(entity_idx)
+            #     changes_made.append(f"Marked '{current_text}' for deletion")
+    
+    # Delete entities (in reverse order to maintain indices)
+    if entities_to_delete:
+        for entity_idx in sorted(set(entities_to_delete), reverse=True):
+            if entity_idx < len(updated_entities):
+                deleted_text = updated_entities[entity_idx].get('text', 'Unknown')
+                updated_entities.pop(entity_idx)
+                changes_made.append(f"Deleted entity: '{deleted_text}'")
+    
+    return updated_entities, changes_made
+
+
+def parse_llm_response(response_text: str, chunk_index: int = None):
+    """
+    Parse the JSON returned by LLM with improved error handling.
+    Returns list of entities or empty list on error.
+    """
+    # Log the raw response for debugging
+    if chunk_index is not None:
+        st.write(f"**Debug - Chunk {chunk_index} Raw Response:**")
+        with st.expander(f"Raw Response Content (Chunk {chunk_index})", expanded=False):
+            st.text(repr(response_text))  # Use repr to show exact content including whitespace
+    
+    # Check if response is empty or None
+    if not response_text or response_text.strip() == "":
+        st.warning(f"⚠️ Empty response from LLM for chunk {chunk_index if chunk_index else 'unknown'}")
+        return []
+    
+    # Clean the response text
+    response_text = response_text.strip()
+    
+    try:
+        # Method 1: Try direct JSON parsing first
+        entities = json.loads(response_text)
+        if isinstance(entities, list):
+            # Validate entity structure
+            valid_entities = []
+            for ent in entities:
+                if isinstance(ent, dict) and all(key in ent for key in ["start_char", "end_char", "text", "label"]):
+                    valid_entities.append(ent)
+                else:
+                    st.warning(f"Invalid entity structure: {ent}")
+            return valid_entities
+        else:
+            st.warning(f"Response is not a list: {type(entities)}")
+            return []
+            
+    except json.JSONDecodeError:
+        # Method 2: Try to extract JSON array from text
+        try:
+            first_bracket = response_text.find('[')
+            last_bracket = response_text.rfind(']')
+            
+            if first_bracket == -1 or last_bracket == -1 or first_bracket >= last_bracket:
+                raise ValueError("No valid JSON array found")
+                
+            json_str = response_text[first_bracket:last_bracket+1]
+            entities = json.loads(json_str)
+            
+            # Validate entity keys
+            valid_entities = []
+            for ent in entities:
+                if isinstance(ent, dict) and all(key in ent for key in ["start_char", "end_char", "text", "label"]):
+                    valid_entities.append(ent)
+                else:
+                    st.warning(f"Invalid entity structure: {ent}")
+            
+            if len(valid_entities) != len(entities):
+                st.warning(f"Some entities were invalid and filtered out")
+            
+            return valid_entities
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # Method 3: Try to find and parse multiple JSON objects
+            try:
+                # Look for individual JSON objects
+                import re
+                json_objects = re.findall(r'\{[^{}]*\}', response_text)
+                entities = []
+                for obj_str in json_objects:
+                    try:
+                        obj = json.loads(obj_str)
+                        if all(key in obj for key in ["start_char", "end_char", "text", "label"]):
+                            entities.append(obj)
+                    except:
+                        continue
+                
+                if entities:
+                    st.info(f"Recovered {len(entities)} entities from malformed response")
+                    return entities
+                    
+            except Exception:
+                pass
+            
+            # Final fallback: Log error and return empty
+            st.error(f"Failed to parse LLM output JSON for chunk {chunk_index if chunk_index else 'unknown'}: {e}")
+            st.error(f"Raw response preview: {response_text[:200]}...")
+            return []
+
+
+
+def run_annotation_pipeline(text, tag_df, client, temperature, max_tokens, chunk_size):
+    """
+    1. Chunk the text
+    2. For each chunk, generate prompt and call LLM
+    3. Parse and adjust entities with offset
+    4. Aggregate and return full list of entities
+    """
+    chunks = chunk_text(text, chunk_size)
+    all_entities = []
+    char_pos = 0
+    
+    # Create a container for progress updates
+    progress_container = st.container()
+    
+    start_time = time.time()
+    
+    for i, chunk in enumerate(chunks):
+        with progress_container:
+            # Clear previous progress display
+            progress_container.empty()
+            
+            # Show current progress
+            display_chunk_progress(i + 1, len(chunks), chunk, start_time)
+            
+            # Process the chunk
+            with st.spinner(f"🤖 Calling {st.session_state.model_provider} API..."):
+                prompt = build_annotation_prompt(tag_df, chunk)
+                response = client.generate(prompt, temperature=temperature, max_tokens=max_tokens)
+                entities = parse_llm_response(response)
+                entities = aggregate_entities(entities, char_pos)
+                all_entities.extend(entities)
+                
+                # Show chunk results
+                st.success(f"✅ Chunk {i+1} completed! Found {len(entities)} entities.")
+                
+            char_pos += len(chunk) + 1  # +1 for newline or split char
+    
+    # Final summary
+    total_time = time.time() - start_time
+    st.balloons()
+    st.success(f"🎉 All chunks processed in {total_time:.1f} seconds!")
+    
+    return all_entities
