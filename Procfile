@@ -1,1 +1,1 @@
-web: sh setup.sh && streamlit run ./app_v1_integrated_fix_position.py
+web: sh setup.sh && streamlit run ./app_v3_agent_optimization.py
