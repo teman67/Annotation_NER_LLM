@@ -1,6 +1,6 @@
 # 🔬 Scientific Text Annotator with LLMs
 
-A powerful Streamlit application that uses Large Language Models (OpenAI GPT or Claude) to automatically annotate scientific text with custom tags and definitions. Perfect for researchers, data scientists, and anyone working with scientific literature who needs automated text annotation capabilities.
+A powerful Streamlit application that uses Large Language Models (OpenAI GPT or Anthropic Claude) to automatically annotate scientific text with custom tag definitions. The app provides a complete workflow from annotation to validation, editing, and evaluation.
 
 ![App Screenshot](ScreenShots/Output.png)
 
@@ -8,282 +8,224 @@ A powerful Streamlit application that uses Large Language Models (OpenAI GPT or 
 
 ## ✨ Features
 
-### 🤖 **Multi-Model Support**
+### Core Functionality
 
-- **OpenAI Models**: GPT-4o, GPT-4o-mini, GPT-4, GPT-3.5-turbo
-- **Anthropic Claude**: Claude-3-opus, Claude-3-sonnet, Claude-3-haiku
+- **Multi-LLM Support**: Choose between OpenAI (GPT-3.5, GPT-4, GPT-4o) or Anthropic Claude models
+- **Custom Tag Definitions**: Upload your own tag set with definitions and examples via CSV
+- **Chunked Processing**: Handles large texts by breaking them into configurable chunks
+- **Visual Annotation Display**: Interactive highlighting of annotated entities in the text
+- **Comprehensive Export**: Download annotations with complete metadata in JSON format
 
-### 📝 **Flexible Input Methods**
+### Advanced Capabilities
 
-- Upload `.txt` files directly
-- Paste text into the interface
-- Automatic text cleaning (removes non-printable characters)
+- **Interactive Editing**: Edit, add, or remove annotations through a built-in data editor
+- **Position Validation**: Validate that annotation positions match the actual text
+- **Automatic Position Fixing**: Automatically correct misaligned annotation positions
+- **LLM Evaluation**: Use LLM to evaluate annotation quality and get improvement suggestions
+- **Batch Recommendation Application**: Apply multiple LLM suggestions at once
 
-### 🏷️ **Custom Tag System**
-
-- Define your own annotation tags via CSV upload
-- Required columns: `tag_name`, `definition`, `examples`
-- Automatic color generation for visual distinction
-
-### 🔧 **Advanced Processing Options**
-
-- **Chunking**: Handles large texts by splitting into manageable chunks
-- **Temperature Control**: Adjust model creativity (0.0-1.0)
-- **Token Limits**: Configure max tokens per API response
-- **Smart Text Splitting**: Preserves word boundaries when chunking
-
-### 📊 **Real-time Progress Tracking**
-
-- Live progress bars during processing
-- Chunk-by-chunk status updates
-- Time estimates and elapsed time display
-- Detailed processing summaries
-
-### 🎨 **Rich Visualization**
-
-- Color-coded annotations with hover tooltips
-- Interactive highlighted text display
-- Clean, professional styling
-
-### ✏️ **Post-Processing Editing**
-
-- Edit annotations in an interactive table
-- Add or remove annotations manually
-- Bulk deletion with multi-select
-- Real-time updates to highlighted text
-
-### 💾 **Export Capabilities**
-
-- Download results as structured JSON
-- Includes original text and all annotations
-- Preserves character positions and labels
-
-## 🚀 Installation
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.7+
+- Python 3.9+
 - Streamlit
-- pandas
-- Valid API key for OpenAI or Anthropic
+- OpenAI API key or Anthropic Claude API key
 
-### Required Files
-
-The application requires these additional files to function:
-
-- `prompts_flat.py` - Contains the `build_annotation_prompt()` function
-- `llm_clients.py` - Contains the `LLMClient` class for API interactions
-
-### Setup
-
-1. Install required packages:
+### Installation
 
 ```bash
-pip install streamlit pandas
+git clone <repository-url>
+cd scientific-text-annotator
+pip install -r requirements.txt
 ```
 
-2. Ensure you have your additional Python modules:
-
-   - `prompts_flat.py`
-   - `llm_clients.py`
-
-3. Run the application:
+### Running the App
 
 ```bash
-streamlit run app.py
+streamlit run app_v3_agent_optimization.py
 ```
 
 ## 📋 Usage Guide
 
-### Step 1: Configure API Access
+### 1. Setup
 
-1. **Enter API Key**: Paste your OpenAI or Anthropic API key in the sidebar
-2. **Select Provider**: Choose between OpenAI or Claude
-3. **Choose Model**: Select the specific model variant
-4. **Adjust Parameters**:
-   - **Temperature**: Control randomness (0.0 = deterministic, 1.0 = creative)
-   - **Chunk Size**: Characters per processing chunk (500-4000)
-   - **Max Tokens**: Maximum tokens per API response (200-6000)
+1. **Configure API**: Enter your OpenAI or Claude API key in the sidebar
+2. **Select Model**: Choose your preferred LLM provider and model
+3. **Adjust Parameters**: Configure temperature, chunk size, and max tokens
 
-### Step 2: Upload Your Text
+### 2. Input Data
 
-- **Option A**: Upload a `.txt` file using the file uploader
-- **Option B**: Paste text directly into the text area
-- **Text Cleaning**: Enable automatic removal of non-printable characters
+1. **Upload Text**:
+   - Upload a `.txt` file, or
+   - Paste text directly into the text area
+2. **Upload Tag Set**: Upload a CSV file with columns:
+   - `tag_name`: The name of the annotation tag
+   - `definition`: Clear definition of what the tag represents
+   - `examples`: Examples of text that should be tagged
 
-### Step 3: Define Your Tags
+### 3. Run Annotation
 
-Create a CSV file with these required columns:
+1. Click **"🔍 Run Annotation"** to start the process
+2. Monitor progress as the app processes text chunks
+3. View annotation statistics and distribution
 
-- `tag_name`: The label for this annotation type
-- `definition`: Clear definition of what this tag represents
-- `examples`: Example text that should receive this tag
+### 4. Review and Edit (Optional)
 
-**Example CSV:**
+1. **Visual Preview**: See highlighted annotations in the text
+2. **Edit Annotations**: Use the interactive table to:
+   - Modify annotation text, positions, or labels
+   - Add new annotations
+   - Delete unwanted annotations
+3. **Validation**: Check if annotation positions match the text
+4. **Auto-Fix**: Automatically correct position misalignments
 
-```csv
-tag_name,definition,examples
-GENE,Names of genes or genetic sequences,TP53; BRCA1; insulin gene
-PROTEIN,Protein names and enzyme references,hemoglobin; cytochrome c; DNA polymerase
-DISEASE,Medical conditions and pathologies,cancer; diabetes; Alzheimer's disease
-```
+### 5. LLM Evaluation (Optional)
 
-### Step 4: Review Processing Summary
+1. **Run Evaluation**: Let the LLM assess annotation quality
+2. **Review Suggestions**: See recommendations for label changes or deletions
+3. **Apply Recommendations**: Selectively apply LLM suggestions
 
-Before running annotation, review the automatically generated summary:
+### 6. Export Results
 
-- Text statistics (length, estimated tokens)
-- Chunking information (number of chunks, size)
-- Model configuration
-- Detailed chunk breakdown
+Download your annotations in JSON format with complete metadata
 
-### Step 5: Run Annotation
+## 🔧 Configuration Options
 
-1. Click **"🔍 Run Annotation"**
-2. Monitor real-time progress with:
-   - Progress bars
-   - Chunk-by-chunk updates
-   - Time estimates
-   - Live status messages
+### Processing Parameters
 
-### Step 6: Review and Edit Results
-
-- **Visual Preview**: See your text with color-coded annotations
-- **Interactive Editing**: Modify annotations in the data table
-- **Bulk Operations**: Select and delete multiple annotations
-- **Real-time Updates**: Changes reflect immediately in the preview
-
-### Step 7: Export Results
-
-Download your annotations as a structured JSON file containing:
-
-- Original text
-- All annotations with positions and labels
-- Metadata for further processing
-
-## 🔧 Technical Details
-
-### Text Processing
-
-- **Smart Chunking**: Attempts to split on newlines or spaces to preserve word boundaries
-- **Offset Tracking**: Maintains accurate character positions across chunks
-- **Overlap Handling**: Prevents duplicate annotations in overlapping regions
-
-### API Integration
-
-- **Error Handling**: Robust error handling for API failures
-- **Rate Limiting**: Processes chunks sequentially to respect API limits
-- **Response Parsing**: Intelligent JSON extraction from LLM responses
-
-### Data Structure
-
-Annotations are stored as JSON objects with this structure:
-
-```json
-{
-  "text": "Original text content",
-  "entities": [
-    {
-      "start_char": 0,
-      "end_char": 10,
-      "text": "gene name",
-      "label": "GENE"
-    }
-  ]
-}
-```
-
-## 📊 Performance Considerations
-
-### Chunking Strategy
-
-- **Default**: 800 characters per chunk
-- **Recommendation**: Adjust based on your model's context window
-- **Trade-off**: Larger chunks provide better context but may hit token limits
-
-### Token Estimation
-
-- **Rule of Thumb**: ~4 characters per token for English text
-- **Monitoring**: Built-in token estimation helps predict costs
-- **Optimization**: Adjust chunk size and max tokens based on your needs
-
-### Cost Management
-
-- **Progress Tracking**: Monitor API calls in real-time
-- **Chunk Preview**: Review what will be processed before starting
-- **Model Selection**: Choose appropriate model for your accuracy/cost balance
-
-## 🎯 Best Practices
-
-### Tag Definition
-
-1. **Be Specific**: Provide clear, unambiguous definitions
-2. **Include Examples**: Add 3-5 representative examples per tag
-3. **Avoid Overlap**: Ensure tag definitions don't conflict
-4. **Test Small**: Start with a small text sample to validate tags
-
-### Text Preparation
-
-1. **Clean Data**: Use the built-in text cleaning option
-2. **Structure**: Well-formatted text produces better results
-3. **Length**: Consider your API limits when processing very long texts
-4. **Encoding**: Ensure proper UTF-8 encoding for special characters
+- **Temperature** (0.0-1.0): Controls LLM creativity/consistency
+- **Chunk Size** (200-4000 chars): Size of text segments processed individually
+- **Max Tokens**: Maximum tokens per LLM response
+- **Clean Text**: Remove non-printable characters from input
 
 ### Model Selection
 
-- **GPT-4o**: Best accuracy, higher cost
-- **GPT-4o-mini**: Good balance of speed and accuracy
-- **Claude-3-opus**: Excellent for complex scientific text
-- **Claude-3-haiku**: Fast and cost-effective for simple annotations
+**OpenAI Models:**
 
-## 🛠️ Troubleshooting
+- `gpt-4o-mini` (recommended for cost-effectiveness)
+- `gpt-4o` (best performance)
+- `gpt-4`
+- `gpt-3.5-turbo`
+
+**Claude Models:**
+
+- `claude-3-5-sonnet-20250219`
+- `claude-3-5-haiku-20241022`
+
+## 📊 Tag Set CSV Format
+
+Your tag definition CSV must include these columns:
+
+```csv
+tag_name,definition,examples
+GENE,"A DNA sequence that codes for a protein","TP53, BRCA1, insulin gene"
+PROTEIN,"A biological molecule made of amino acids","hemoglobin, antibody, enzyme"
+DISEASE,"A medical condition or disorder","cancer, diabetes, Alzheimer's disease"
+```
+
+## 🔍 Validation and Quality Control
+
+### Position Validation
+
+- Checks if annotation positions correctly correspond to the tagged text
+- Identifies misaligned annotations caused by text processing
+- Reports overlapping annotations and zero-length annotations
+
+### Automatic Position Fixing
+
+- **First Strategy**: Uses the first occurrence of the text found
+- **Closest Strategy**: Chooses the position closest to the original annotation
+
+### LLM Evaluation
+
+- Assesses whether annotations match their tag definitions
+- Provides confidence scores and detailed reasoning
+- Suggests label changes or entity deletions
+- Tracks which recommendations have been applied
+
+## 📁 File Structure
+
+```
+scientific-text-annotator/
+├── app_v3_agent_optimization.py    # Main Streamlit application
+├── prompts_flat.py                 # LLM prompt templates
+├── helper.py                       # Utility functions
+├── llm_clients.py                  # LLM client implementations
+├── requirements.txt                # Python dependencies
+└── README.md                       # This file
+```
+
+## 🔧 Key Functions
+
+### Core Processing
+
+- `run_annotation_pipeline()`: Main annotation workflow
+- `chunk_text()`: Splits text into processable chunks
+- `aggregate_entities()`: Combines annotations from all chunks
+
+### Validation & Fixing
+
+- `validate_annotations_streamlit()`: Checks annotation correctness
+- `fix_annotation_positions_streamlit()`: Corrects position errors
+
+### Evaluation
+
+- `evaluate_annotations_with_llm()`: LLM-based quality assessment
+- `apply_evaluation_recommendations()`: Applies LLM suggestions
+
+### Display
+
+- `display_annotated_entities()`: Visual text highlighting
+- `display_processing_summary()`: Shows processing statistics
+
+## 💡 Best Practices
+
+### For Better Annotations
+
+1. **Clear Tag Definitions**: Write precise, unambiguous definitions
+2. **Good Examples**: Provide diverse, representative examples
+3. **Appropriate Chunk Size**: Balance context vs. processing time
+4. **Multiple Passes**: Run evaluation and apply suggestions iteratively
+
+### For Large Texts
+
+1. **Optimize Chunk Size**: Larger chunks provide more context but slower processing
+2. **Monitor Token Usage**: Adjust max_tokens based on chunk size
+3. **Use Efficient Models**: Consider `gpt-4o-mini` for cost-effectiveness
+
+### Quality Control
+
+1. **Always Validate**: Check position accuracy after annotation
+2. **Review LLM Suggestions**: Don't blindly apply all recommendations
+3. **Manual Review**: Spot-check annotations for accuracy
+4. **Iterative Improvement**: Refine tag definitions based on results
+
+## ⚠️ Limitations
+
+- **API Rate Limits**: Large texts may hit API rate limits
+- **Context Windows**: Very long texts are processed in chunks, potentially losing global context
+- **Model Dependence**: Quality depends on the chosen LLM's capabilities
+- **Position Sensitivity**: Text preprocessing may affect annotation positions
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-**"API key missing"**
+1. **"API key missing"**: Ensure you've entered a valid API key
+2. **Position mismatches**: Run validation and use the auto-fix feature
+3. **Empty annotations**: Check your tag definitions and examples
+4. **Memory issues**: Reduce chunk size or max tokens for large texts
 
-- Ensure your API key is properly pasted in the sidebar
-- Verify the key is valid and has sufficient credits
+### Performance Tips
 
-**"Failed to parse LLM output JSON"**
-
-- The model may be returning malformed JSON
-- Try adjusting temperature (lower = more consistent)
-- Check if your tag definitions are clear enough
-
-**"Chunk processing failed"**
-
-- Reduce chunk size if hitting token limits
-- Increase max tokens if responses are cut off
-- Check API rate limits
-
-**"No annotations found"**
-
-- Verify your text contains examples of your defined tags
-- Review tag definitions for clarity
-- Try a different model or adjust temperature
-
-### Performance Issues
-
-- **Slow Processing**: Reduce chunk size or choose a faster model
-- **High Costs**: Use smaller models or reduce max tokens
-- **Memory Issues**: Process shorter texts or restart the application
-
-## 📜 License
-
-This project is provided as-is for educational and research purposes. Please ensure compliance with your chosen LLM provider's terms of service.
-
-## 🤝 Contributing
-
-This is a research tool designed for scientific text annotation. Contributions and improvements are welcome!
+- Use smaller chunk sizes for faster processing
+- Choose appropriate models based on your accuracy/cost requirements
+- Clean text input to avoid processing issues
 
 ## 📞 Support
 
-For issues related to:
-
-- **OpenAI API**: Check OpenAI's documentation and status page
-- **Claude API**: Refer to Anthropic's API documentation
-- **Streamlit**: Consult Streamlit's community forums
+[Email](amirhossein.bayani@gmail.com)
 
 ---
 
