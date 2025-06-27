@@ -785,7 +785,7 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
     st.markdown("---")
     st.subheader("🤖 LLM Evaluation & Suggestions")
     
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([2, 2])
     
     with col1:
         st.write("Use LLM to evaluate whether annotated entities match their tag definitions and get suggestions for improvements.")
@@ -1012,7 +1012,7 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                     current_text = current_entity.get('text', eval_result.get('current_text', ''))
                     
                     if eval_result.get('recommendation') == 'delete':
-                        action = "DELETE"
+                        action = "DELETE this Entity Manually From the Table in 📝 Edit Annotations"  
                     else:
                         action = f"CHANGE to '{eval_result.get('suggested_label')}'"
                     
