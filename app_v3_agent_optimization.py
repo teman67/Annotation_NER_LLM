@@ -4,127 +4,29 @@ import io
 import json
 import streamlit as st
 import pandas as pd
-from prompts_flat import *
+from prompts_flat import build_annotation_prompt
+from helper import (
+    chunk_text,     # Function to chunk text into smaller pieces
+    aggregate_entities,  # Function to aggregate entities with offsets
+    display_chunk_progress,  # Function to display progress of chunk processing 
+    display_processing_summary,  # Function to show processing summary
+    generate_label_colors,  # Function to generate colors for labels
+    get_token_recommendations,  # Function to get token recommendations based on chunk size
+    validate_annotations_streamlit,  # Function to validate annotations
+    fix_annotation_positions_streamlit,  # Function to fix annotation positions
+    display_annotated_entities  # Function to display annotated entities in a visually appealing way
+)
 from llm_clients import LLMClient
 import html
 import time
 import streamlit.components.v1 as components
+import colorsys
+import hashlib
 
 # ----- Page Setup -----
 st.set_page_config(page_title="LLM-based Scientific Text Annotator", layout="wide")
 
-import colorsys
-import hashlib
-
-def generate_label_colors(tag_list):
-    """
-    Generate visually distinct colors for each tag using hashing and HSL spacing.
-    """
-    label_colors = {}
-    num_tags = len(tag_list)
-
-    for i, tag in enumerate(sorted(tag_list)):
-        # Generate hue spaced around the color wheel
-        hue = i / num_tags
-        lightness = 0.7
-        saturation = 0.6
-        rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
-        # Convert to hex
-        color = '#{:02x}{:02x}{:02x}'.format(
-            int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
-        )
-        label_colors[tag] = color
-    return label_colors
-
-def estimate_tokens(text):
-    """
-    Rough token estimation (1 token ≈ 4 characters for English text)
-    """
-    return len(text) // 4
-
-def display_processing_summary(text, tag_df, chunk_size, temperature, max_tokens, model_provider, model):
-    """
-    Display a comprehensive summary of processing parameters
-    """
-    chunks = chunk_text(text, chunk_size)
-    
-    st.markdown("### 📊 Processing Summary")
-    
-    # Create metrics columns
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Text Length", f"{len(text):,} chars", help="Total number of characters in the input text")
-        st.metric("Estimated Tokens", f"{estimate_tokens(text):,}", help="Approximate number of tokens (1 token ≈ 4 characters)")
-    
-    with col2:
-        st.metric("Number of Chunks", len(chunks), help="Text will be split into this many chunks")
-        st.metric("Chunk Size", f"{chunk_size:,} chars", help="Maximum characters per chunk")
-    
-    with col3:
-        st.metric("Total Tags", len(tag_df), help="Number of annotation tags available")
-        st.metric("Temperature", temperature, help="LLM creativity setting (0=deterministic, 1=creative)")
-    
-    with col4:
-        st.metric("Max Tokens/Response", max_tokens, help="Maximum tokens the LLM can generate per chunk")
-        st.metric("Model", f"{model_provider}: {model}", help="Selected language model")
-    
-    # Display chunk information in an expandable section
-    with st.expander("📋 Chunk Details", expanded=False):
-        chunk_data = []
-        for i, chunk in enumerate(chunks):
-            chunk_data.append({
-                "Chunk #": i + 1,
-                "Characters": len(chunk),
-                "Est. Tokens": estimate_tokens(chunk),
-                "Preview": chunk[:100] + "..." if len(chunk) > 100 else chunk
-            })
-        
-        chunk_df = pd.DataFrame(chunk_data)
-        st.dataframe(chunk_df, use_container_width=True)
-    
-    # Display tag information
-    # with st.expander("🏷️ Tag Configuration", expanded=False):
-    #     st.dataframe(tag_df[['tag_name', 'definition']], use_container_width=True)
-    
-    st.markdown("---")
-
-def display_chunk_progress(current_chunk, total_chunks, chunk_text, start_time=None):
-    """
-    Display attractive progress information for current chunk processing
-    """
-    # Progress bar
-    progress = current_chunk / total_chunks
-    st.progress(progress)
-    
-    # Progress info
-    col1, col2, col3 = st.columns([2, 1, 1])
-    
-    with col1:
-        st.markdown(f"**Processing Chunk {current_chunk}/{total_chunks}**")
-        if start_time:
-            elapsed = time.time() - start_time
-            estimated_total = elapsed / progress if progress > 0 else 0
-            remaining = estimated_total - elapsed
-            st.caption(f"⏱️ Elapsed: {elapsed:.1f}s | Estimated remaining: {remaining:.1f}s")
-    
-    with col2:
-        st.metric("Progress", f"{progress:.1%}")
-    
-    with col3:
-        st.metric("Chunk Size", f"{len(chunk_text):,} chars")
-    
-    # Chunk preview
-    with st.expander(f"📄 Chunk {current_chunk} Preview", expanded=False):
-        st.text_area(
-            "Content Preview:", 
-            value=chunk_text[:500] + "..." if len(chunk_text) > 500 else chunk_text,
-            height=100,
-            disabled=True,
-            key=f"chunk_preview_{current_chunk}"
-        )
-
-
+# ----- Title and Description -----
 st.title("🔬 Scientific Text Annotator with LLMs")
 st.markdown("Use OpenAI or Claude models to annotate scientific text with custom tag definitions.")
 
@@ -141,6 +43,12 @@ if 'annotated_entities' not in st.session_state:
     st.session_state.annotated_entities = []
 if 'annotation_complete' not in st.session_state:
     st.session_state.annotation_complete = False
+if 'evaluation_results' not in st.session_state:
+    st.session_state.evaluation_results = []
+if 'evaluation_complete' not in st.session_state:
+    st.session_state.evaluation_complete = False
+if 'evaluation_summary' not in st.session_state:
+    st.session_state.evaluation_summary = {}
 
 st.sidebar.header("🔐 API Configuration")
 
@@ -153,7 +61,7 @@ st.session_state.model_provider = model_provider
 if model_provider == "OpenAI":
     model = st.sidebar.selectbox("OpenAI model", ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"])
 else:
-    model = st.sidebar.selectbox("Claude model", ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"])
+    model = st.sidebar.selectbox("Claude model", ["claude-3-7-sonnet-20250219", "claude-3-5-haiku-20241022"])
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔧 Processing Parameters")
@@ -164,18 +72,6 @@ temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 0.1, step=0.05,
 chunk_size = st.sidebar.slider("Chunk size (characters)", 200, 4000, 1000, step=100,
                               help="Size of text chunks to process separately")
 
-# Dynamic token calculation based on chunk size
-def get_token_recommendations(chunk_size):
-    if chunk_size <= 500:
-        return 200, 800, 300
-    elif chunk_size <= 1000:
-        return 300, 1200, 400
-    elif chunk_size <= 2000:
-        return 500, 1800, 1000
-    elif chunk_size <= 3000:
-        return 700, 2500, 1400
-    else:
-        return 1000, 3000, 1800
 
 min_tokens, max_tokens_limit, default_tokens = get_token_recommendations(chunk_size)
 
@@ -241,29 +137,164 @@ if uploaded_csv:
 # ----- Input Validation -----
 st.header("🧠 Ready to Annotate?")
 
-def chunk_text(text: str, chunk_size: int):
-    """
-    Splits text into chunks of approximately chunk_size characters.
-    Tries to split on newline or space to avoid cutting words abruptly.
-    """
-    chunks = []
-    start = 0
-    length = len(text)
-    while start < length:
-        end = start + chunk_size
-        if end >= length:
-            chunks.append(text[start:])
-            break
-        # Try to split on last newline before end
-        split_pos = text.rfind('\n', start, end)
-        if split_pos == -1 or split_pos <= start:
-            split_pos = text.rfind(' ', start, end)
-        if split_pos == -1 or split_pos <= start:
-            split_pos = end  # fallback hard cut
+# Add these functions to your main app file
 
-        chunks.append(text[start:split_pos].strip())
-        start = split_pos
-    return chunks
+def evaluate_annotations_with_llm(entities, tag_df, client, temperature=0.1, max_tokens=2000):
+    """
+    Use LLM to evaluate whether annotations match their label definitions.
+    """
+    if not entities:
+        return []
+        
+    from prompts_flat import build_evaluation_prompt
+    
+    # Split entities into batches if too many (to avoid token limits)
+    batch_size = 50  # Adjust based on your needs
+    all_evaluations = []
+    
+    entity_batches = [entities[i:i + batch_size] for i in range(0, len(entities), batch_size)]
+    
+    for batch_idx, entity_batch in enumerate(entity_batches):
+        st.write(f"🤖 Evaluating batch {batch_idx + 1}/{len(entity_batches)} ({len(entity_batch)} entities)...")
+        
+        prompt = build_evaluation_prompt(tag_df, entity_batch)
+        
+        with st.spinner(f"LLM evaluating batch {batch_idx + 1}..."):
+            response = client.generate(prompt, temperature=temperature, max_tokens=max_tokens)
+            batch_evaluations = parse_evaluation_response(response, batch_idx)
+            
+            # Adjust entity indices for batched processing
+            for i, eval_result in enumerate(batch_evaluations):
+                # Overwrite entity_index with the true global index
+                eval_result['entity_index'] = batch_idx * batch_size + i
+                
+            all_evaluations.extend(batch_evaluations)
+    
+    return all_evaluations
+
+def parse_evaluation_response(response_text: str, batch_idx: int = None) -> list:
+    """
+    Parse the evaluation JSON response from LLM.
+    """
+    if not response_text or response_text.strip() == "":
+        st.warning(f"⚠️ Empty evaluation response from LLM for batch {batch_idx if batch_idx else 'unknown'}")
+        return []
+    
+    response_text = response_text.strip()
+    
+    try:
+        # Try direct JSON parsing
+        evaluations = json.loads(response_text)
+        if isinstance(evaluations, list):
+            # Validate evaluation structure
+            valid_evaluations = []
+            required_fields = ["entity_index", "current_text", "current_label", "is_correct", "recommendation"]
+            
+            for eval_result in evaluations:
+                if isinstance(eval_result, dict) and all(field in eval_result for field in required_fields):
+                    valid_evaluations.append(eval_result)
+                else:
+                    st.warning(f"Invalid evaluation structure: {eval_result}")
+            return valid_evaluations
+        else:
+            st.warning(f"Evaluation response is not a list: {type(evaluations)}")
+            return []
+            
+    except json.JSONDecodeError:
+        # Try to extract JSON array from text
+        try:
+            first_bracket = response_text.find('[')
+            last_bracket = response_text.rfind(']')
+            
+            if first_bracket == -1 or last_bracket == -1 or first_bracket >= last_bracket:
+                raise ValueError("No valid JSON array found")
+                
+            json_str = response_text[first_bracket:last_bracket+1]
+            evaluations = json.loads(json_str)
+            
+            valid_evaluations = []
+            required_fields = ["entity_index", "current_text", "current_label", "is_correct", "recommendation"]
+            
+            for eval_result in evaluations:
+                if isinstance(eval_result, dict) and all(field in eval_result for field in required_fields):
+                    valid_evaluations.append(eval_result)
+            
+            return valid_evaluations
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            st.error(f"Failed to parse evaluation response for batch {batch_idx if batch_idx else 'unknown'}: {e}")
+            st.error(f"Raw response preview: {response_text[:200]}...")
+            return []
+
+def clear_all_previous_data():
+    """Clear all previous annotation and evaluation data when starting new annotation."""
+    # Clear annotation data
+    st.session_state.annotated_entities = []
+    st.session_state.annotation_complete = False
+    if 'editable_entities_df' in st.session_state:
+        del st.session_state.editable_entities_df
+
+    # Clear validation and fix results
+    if 'validation_results' in st.session_state:
+        del st.session_state.validation_results
+    if 'fix_results' in st.session_state:
+        del st.session_state.fix_results
+    
+    # Clear evaluation data (NEW)
+    st.session_state.evaluation_results = []
+    st.session_state.evaluation_complete = False
+    st.session_state.evaluation_summary = {}
+
+def apply_evaluation_recommendations(entities, evaluations, selected_indices):
+    """
+    Apply selected evaluation recommendations to entities.
+    Returns updated entities and list of changes made.
+    """
+    if not entities:
+        return [], ["No entities to process"]
+    
+    if not evaluations:
+        return entities, ["No evaluations available"]
+    
+    updated_entities = entities.copy()
+    changes_made = []
+    entities_to_delete = []  # Use list to maintain order
+    
+    # Process all recommendations first (for label changes)
+    for eval_idx in selected_indices:
+        if eval_idx < len(evaluations):
+            evaluation = evaluations[eval_idx]
+            entity_idx = evaluation.get('entity_index')
+            
+            if entity_idx is None or entity_idx >= len(updated_entities):
+                changes_made.append(f"Warning: Invalid entity index {entity_idx}")
+                continue
+                
+            recommendation = evaluation.get('recommendation', '')
+            current_text = updated_entities[entity_idx].get('text', 'Unknown')
+            
+            if recommendation == 'change_label' and evaluation.get('suggested_label'):
+                # Change the label
+                old_label = updated_entities[entity_idx].get('label', 'Unknown')
+                new_label = evaluation['suggested_label']
+                updated_entities[entity_idx]['label'] = new_label
+                changes_made.append(f"Changed '{current_text}' from '{old_label}' to '{new_label}'")
+                
+            # elif recommendation == 'delete':
+            #     # Mark for deletion (will delete later)
+            #     entities_to_delete.append(entity_idx)
+            #     changes_made.append(f"Marked '{current_text}' for deletion")
+    
+    # Delete entities (in reverse order to maintain indices)
+    if entities_to_delete:
+        for entity_idx in sorted(set(entities_to_delete), reverse=True):
+            if entity_idx < len(updated_entities):
+                deleted_text = updated_entities[entity_idx].get('text', 'Unknown')
+                updated_entities.pop(entity_idx)
+                changes_made.append(f"Deleted entity: '{deleted_text}'")
+    
+    return updated_entities, changes_made
+
 
 def parse_llm_response(response_text: str, chunk_index: int = None):
     """
@@ -352,14 +383,7 @@ def parse_llm_response(response_text: str, chunk_index: int = None):
             st.error(f"Raw response preview: {response_text[:200]}...")
             return []
 
-def aggregate_entities(all_entities, offset):
-    """
-    Adjust entity character positions by offset (chunk start position in full text).
-    """
-    for ent in all_entities:
-        ent['start_char'] += offset
-        ent['end_char'] += offset
-    return all_entities
+
 
 def run_annotation_pipeline(text, tag_df, client, temperature, max_tokens, chunk_size):
     """
@@ -405,53 +429,6 @@ def run_annotation_pipeline(text, tag_df, client, temperature, max_tokens, chunk
     
     return all_entities
 
-
-def highlight_text_with_entities(text: str, entities: list, label_colors: dict) -> str:
-    import html
-    used_positions = set()
-    highlighted = []
-    last_pos = 0
-
-    sorted_entities = sorted(entities, key=lambda x: x.get("start_char", 0))
-
-    for ent in sorted_entities:
-        span = ent["text"]
-        label = ent["label"]
-        color = label_colors.get(label, "#e0e0e0")  # fallback if missing
-
-        search_start = last_pos
-        found = False
-        while search_start < len(text):
-            idx = text.find(span, search_start)
-            if idx == -1:
-                break
-            if any(i in used_positions for i in range(idx, idx + len(span))):
-                search_start = idx + 1
-                continue
-            else:
-                highlighted.append(html.escape(text[last_pos:idx]))
-                # Improved HTML with better tooltip styling
-                highlighted.append(
-                    f'<span style="background-color: {color}; font-weight: bold; padding: 2px 4px; '
-                    f'border-radius: 3px; cursor: help; display: inline-block; '
-                    f'border: 1px solid {color};" '
-                    f'data-tooltip="{html.escape(label)}">'
-                    f'{html.escape(span)}</span>'
-                )
-                used_positions.update(range(idx, idx + len(span)))
-                last_pos = idx + len(span)
-                found = True
-                break
-
-        if not found:
-            continue
-
-    # Append any remaining text after all entities
-    highlighted.append(html.escape(text[last_pos:]))
-
-    return ''.join(highlighted)
-
-
 # === Show Processing Summary ===
 if st.session_state.text_data and st.session_state.tag_df is not None:
     display_processing_summary(
@@ -466,6 +443,8 @@ if st.session_state.text_data and st.session_state.tag_df is not None:
 
 # === Streamlit UI ===
 
+# Replace your existing "Run Annotation" button code with this updated version:
+
 if st.button("🔍 Run Annotation", key="run_annotation_btn"):
     if not st.session_state.api_key:
         st.error("❌ API key missing")
@@ -475,25 +454,8 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
         st.error("❌ Tag CSV missing")
     else:
         try:
-            # Clear previous annotation results when starting new annotation
-            st.session_state.annotated_entities = []
-            st.session_state.annotation_complete = False
-            if 'editable_entities_df' in st.session_state:
-                del st.session_state.editable_entities_df
-
-            # Clear validation and fix results
-            if 'validation_results' in st.session_state:
-                del st.session_state.validation_results
-            if 'fix_results' in st.session_state:
-                del st.session_state.fix_results
-
-            # Clear evaluation results
-            if 'evaluation_stats' in st.session_state:
-                del st.session_state.evaluation_stats
-            if 'evaluation_recommendations' in st.session_state:
-                del st.session_state.evaluation_recommendations
-            if 'pending_evaluation_recommendations' in st.session_state:
-                del st.session_state.pending_evaluation_recommendations
+            # Clear ALL previous data when starting new annotation
+            clear_all_previous_data()  # This function we defined in step 3
             
             st.markdown("### 🚀 Starting Annotation Process")
             
@@ -515,7 +477,7 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
             st.session_state.annotated_entities = entities
             st.session_state.annotation_complete = True
 
-            # DEBUG: Add comprehensive debugging
+            # DEBUG: Add comprehensive debugging (keep your existing debug code)
             st.markdown("### 🔍 Annotation Information")
 
             col1, col2, col3 = st.columns(3)
@@ -532,7 +494,7 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
                                 if all(key in e for key in ['start_char', 'end_char', 'text', 'label'])]
                 st.metric("Valid Entities", len(valid_entities))
 
-            # Show problematic entities
+            # Show problematic entities (keep your existing debug code)
             problematic_entities = [e for e in st.session_state.annotated_entities 
                                 if not all(key in e for key in ['start_char', 'end_char', 'text', 'label'])]
 
@@ -540,7 +502,7 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
                 with st.expander("⚠️ Problematic Entities (missing required fields)", expanded=True):
                     st.json(problematic_entities[:5])  # Show first 5
 
-            # Check for entities with invalid positions
+            # Check for entities with invalid positions (keep your existing debug code)
             invalid_pos_entities = []
             text_length = len(st.session_state.text_data)
             for e in st.session_state.annotated_entities:
@@ -553,7 +515,7 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
                 with st.expander("⚠️ Entities with Invalid Positions", expanded=True):
                     st.json(invalid_pos_entities[:5])
 
-            # Show entity distribution by label
+            # Show entity distribution by label (keep your existing debug code)
             if st.session_state.annotated_entities:
                 entity_df_debug = pd.DataFrame(st.session_state.annotated_entities)
                 label_counts = entity_df_debug['label'].value_counts()
@@ -569,106 +531,8 @@ if st.button("🔍 Run Annotation", key="run_annotation_btn"):
 # === Visual Highlight ===
 st.subheader("🔍 Annotated Text Preview")
 
-if 'annotated_entities' in st.session_state and st.session_state.annotated_entities:
-    highlighted_html = highlight_text_with_entities(
-        st.session_state.text_data,
-        st.session_state.annotated_entities,
-        st.session_state.label_colors
-    )
-
-    # Create a complete HTML document with inline CSS and JavaScript
-    full_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            .annotation-container {{
-                font-family: Arial, sans-serif;
-                font-size: 16px;
-                line-height: 1.7;
-                padding: 20px;
-                background-color: #f9f9f9;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                margin: 10px 0;
-            }}
-            
-            .annotation-container span[data-tooltip] {{
-                position: relative;
-                cursor: help;
-                transition: all 0.2s ease;
-            }}
-            
-            .annotation-container span[data-tooltip]:hover {{
-                transform: translateY(-1px);
-                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            }}
-            
-            .tooltip {{
-                visibility: hidden;
-                position: absolute;
-                bottom: 125%;
-                left: 50%;
-                transform: translateX(-50%);
-                background-color: #333;
-                color: white;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: normal;
-                white-space: nowrap;
-                z-index: 1000;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                opacity: 0;
-                transition: opacity 0.3s, visibility 0.3s;
-            }}
-            
-            .tooltip::after {{
-                content: '';
-                position: absolute;
-                top: 100%;
-                left: 50%;
-                margin-left: -6px;
-                border-width: 6px;
-                border-style: solid;
-                border-color: #333 transparent transparent transparent;
-            }}
-            
-            .annotation-container span[data-tooltip]:hover .tooltip {{
-                visibility: visible;
-                opacity: 1;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="annotation-container">
-            {highlighted_html.replace('data-tooltip="', 'data-tooltip="').replace('">', '"><span class="tooltip"></span>')}
-        </div>
-        
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {{
-                const spans = document.querySelectorAll('span[data-tooltip]');
-                spans.forEach(span => {{
-                    const tooltip = span.querySelector('.tooltip');
-                    if (tooltip) {{
-                        tooltip.textContent = span.getAttribute('data-tooltip');
-                    }}
-                }});
-            }});
-        </script>
-    </body>
-    </html>
-    """
+display_annotated_entities()
     
-    # Use Streamlit's HTML component to render the complete HTML
-    components.html(full_html, height=400, scrolling=True)
-    
-
-# Display and edit results (outside of button click)
-import json
-import pandas as pd
-import streamlit as st
-
 if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
     st.header("📝 Edit Annotations")
 
@@ -758,269 +622,8 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
     if not edited_df.equals(df_entities):
         st.session_state.annotated_entities = edited_df.drop(columns=["ID"]).to_dict(orient="records")
 
-    
-# Download annotated JSON (outside of button click)
-# Add these functions to your Streamlit app (after the existing functions)
 
-def validate_annotations_streamlit(text, entities):
-    """
-    Validate that start_char and end_char positions in annotations match the actual text.
-    Modified for Streamlit integration.
-    
-    Args:
-        text (str): The source text
-        entities (list): List of entity dictionaries
-    
-    Returns:
-        dict: Validation results with errors and statistics
-    """
-    
-    validation_results = {
-        'total_entities': len(entities),
-        'correct_entities': 0,
-        'errors': [],
-        'warnings': []
-    }
-    
-    st.write(f"🔍 Validating {len(entities)} annotations...")
-    
-    # Create a progress bar for validation
-    validation_progress = st.progress(0)
-    validation_status = st.empty()
-    
-    for i, entity in enumerate(entities):
-        # Update progress
-        validation_progress.progress((i + 1) / len(entities))
-        validation_status.text(f"Validating entity {i+1}/{len(entities)}: '{entity.get('text', 'N/A')}'")
-        
-        start_char = entity.get('start_char')
-        end_char = entity.get('end_char')
-        expected_text = entity.get('text')
-        
-        # Skip entities with missing required fields
-        if None in [start_char, end_char, expected_text]:
-            error_info = {
-                'entity_index': i,
-                'expected_text': expected_text,
-                'start_char': start_char,
-                'end_char': end_char,
-                'error': 'Missing required fields',
-                'label': entity.get('label', 'Unknown')
-            }
-            validation_results['errors'].append(error_info)
-            continue
-        
-        # Extract actual text from the source using the character positions
-        try:
-            actual_text = text[start_char:end_char]
-            
-            # Check if texts match exactly
-            if actual_text == expected_text:
-                validation_results['correct_entities'] += 1
-            else:
-                error_info = {
-                    'entity_index': i,
-                    'expected_text': expected_text,
-                    'actual_text': actual_text,
-                    'start_char': start_char,
-                    'end_char': end_char,
-                    'label': entity.get('label', 'Unknown')
-                }
-                validation_results['errors'].append(error_info)
-                
-        except IndexError:
-            error_info = {
-                'entity_index': i,
-                'expected_text': expected_text,
-                'start_char': start_char,
-                'end_char': end_char,
-                'error': 'Index out of range',
-                'label': entity.get('label', 'Unknown')
-            }
-            validation_results['errors'].append(error_info)
-    
-    # Clear progress indicators
-    validation_progress.empty()
-    validation_status.empty()
-    
-    # Additional checks
-    # Check for overlapping annotations
-    sorted_entities = sorted([e for e in entities if all(k in e for k in ['start_char', 'end_char'])], 
-                           key=lambda x: x['start_char'])
-    
-    for i in range(len(sorted_entities) - 1):
-        current = sorted_entities[i]
-        next_entity = sorted_entities[i + 1]
-        
-        if current['end_char'] > next_entity['start_char']:
-            warning = {
-                'type': 'overlap',
-                'entity1': current,
-                'entity2': next_entity
-            }
-            validation_results['warnings'].append(warning)
-    
-    # Check for zero-length annotations
-    zero_length = [e for e in entities if e.get('start_char') == e.get('end_char')]
-    if zero_length:
-        validation_results['warnings'].extend(zero_length)
-    
-    return validation_results
-
-def find_all_occurrences(text, pattern):
-    """Find all occurrences of pattern in text"""
-    positions = []
-    start = 0
-    while True:
-        pos = text.find(pattern, start)
-        if pos == -1:
-            break
-        positions.append((pos, pos + len(pattern)))
-        start = pos + 1
-    return positions
-
-def try_fuzzy_fix(text, expected_text, original_start, original_end):
-    """Try to fix common annotation errors"""
-    # Try removing/adding whitespace
-    variations = [
-        expected_text.strip(),
-        expected_text.lstrip(),
-        expected_text.rstrip(),
-        ' ' + expected_text,
-        expected_text + ' ',
-        ' ' + expected_text + ' '
-    ]
-    
-    for variation in variations:
-        positions = find_all_occurrences(text, variation)
-        if positions:
-            # Return the closest match to original position
-            closest = min(positions, key=lambda x: abs(x[0] - original_start))
-            return closest
-    
-    # Try case variations
-    case_variations = [
-        expected_text.lower(),
-        expected_text.upper(),
-        expected_text.capitalize()
-    ]
-    
-    for variation in case_variations:
-        positions = find_all_occurrences(text, variation)
-        if positions:
-            closest = min(positions, key=lambda x: abs(x[0] - original_start))
-            return closest
-    
-    return None
-
-def fix_annotation_positions_streamlit(text, entities, strategy='closest'):
-    """
-    Automatically fix annotation positions by searching for the text.
-    Modified for Streamlit integration.
-    
-    Args:
-        text (str): The source text
-        entities (list): List of entity dictionaries
-        strategy (str): Strategy for handling multiple matches ('closest', 'first')
-    
-    Returns:
-        tuple: (fixed_entities, stats)
-    """
-    
-    fixed_entities = []
-    stats = {
-        'total': len(entities),
-        'already_correct': 0,
-        'fixed': 0,
-        'unfixable': 0,
-        'multiple_matches': 0
-    }
-    
-    st.write(f"🔧 Attempting to fix {len(entities)} annotations...")
-    
-    # Create progress bar for fixing
-    fix_progress = st.progress(0)
-    fix_status = st.empty()
-    
-    for i, entity in enumerate(entities):
-        # Update progress
-        fix_progress.progress((i + 1) / len(entities))
-        fix_status.text(f"Processing entity {i+1}/{len(entities)}: '{entity.get('text', 'N/A')}'")
-        
-        expected_text = entity.get('text')
-        start_char = entity.get('start_char')
-        end_char = entity.get('end_char')
-        
-        # Skip entities with missing required fields
-        if None in [expected_text, start_char, end_char]:
-            fixed_entities.append(entity)
-            stats['unfixable'] += 1
-            continue
-        
-        # Check if current position is correct
-        try:
-            if start_char >= 0 and end_char <= len(text) and text[start_char:end_char] == expected_text:
-                fixed_entities.append(entity)
-                stats['already_correct'] += 1
-                continue
-        except:
-            pass
-        
-        # Try to find the text in the document
-        found_positions = find_all_occurrences(text, expected_text)
-        
-        if not found_positions:
-            # Try fuzzy matching for common issues
-            fixed_pos = try_fuzzy_fix(text, expected_text, start_char, end_char)
-            if fixed_pos:
-                entity_copy = entity.copy()
-                entity_copy['start_char'] = fixed_pos[0]
-                entity_copy['end_char'] = fixed_pos[1]
-                fixed_entities.append(entity_copy)
-                stats['fixed'] += 1
-            else:
-                # Text not found, keep original but mark as unfixable
-                fixed_entities.append(entity)
-                stats['unfixable'] += 1
-        elif len(found_positions) == 1:
-            # Only one match found, use it
-            new_start, new_end = found_positions[0]
-            entity_copy = entity.copy()
-            entity_copy['start_char'] = new_start
-            entity_copy['end_char'] = new_end
-            fixed_entities.append(entity_copy)
-            stats['fixed'] += 1
-        else:
-            # Multiple matches found
-            stats['multiple_matches'] += 1
-            
-            if strategy == 'closest':
-                # Choose the closest to original position
-                closest_pos = min(found_positions, key=lambda x: abs(x[0] - start_char))
-                entity_copy = entity.copy()
-                entity_copy['start_char'] = closest_pos[0]
-                entity_copy['end_char'] = closest_pos[1]
-                fixed_entities.append(entity_copy)
-                stats['fixed'] += 1
-            elif strategy == 'first':
-                # Use the first occurrence
-                first_pos = found_positions[0]
-                entity_copy = entity.copy()
-                entity_copy['start_char'] = first_pos[0]
-                entity_copy['end_char'] = first_pos[1]
-                fixed_entities.append(entity_copy)
-                stats['fixed'] += 1
-    
-    # Clear progress indicators
-    fix_progress.empty()
-    fix_status.empty()
-    
-    return fixed_entities, stats
-
-# Replace the existing "💾 Export Results" section with this enhanced version:
-
-# Replace the validation button section with this code:
-
+st.markdown("---")
 # Download annotated JSON (outside of button click)
 if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
     
@@ -1173,193 +776,414 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
         if st.button("Clear Fix Results", key="clear_fix_results"):
             del st.session_state.fix_results
             st.rerun()
+        # Add this section after your "Validate & Fix Annotations Position" section
+# and before the "Export Results" section
 
-    # === EVALUATION AGENT SECTION ===
-if (st.session_state.get("annotation_complete") and 
-    st.session_state.get("annotated_entities") and 
-    st.session_state.get("tag_df") is not None):
-    
-    st.subheader("🤖 Evaluate & Optimize Annotations")
-    st.write("Use an LLM agent to review annotations and fix label mismatches or inappropriate annotations.")
-    
-    # Evaluation parameters
-    col1, col2 = st.columns(2)
-    with col1:
-        eval_temperature = st.slider(
-            "Evaluation Temperature", 
-            0.0, 0.5, 0.1, step=0.05,
-            help="Lower = more conservative recommendations",
-            key="eval_temp"
-        )
-    with col2:
-        eval_max_tokens = st.slider(
-            "Max Tokens for Evaluation", 
-            1000, 4000, 2000, step=100,
-            help="Tokens for LLM evaluation response",
-            key="eval_tokens"
-        )
-    
-    # Show current label distribution
-    if st.session_state.annotated_entities:
-        current_labels = [entity['label'] for entity in st.session_state.annotated_entities]
-        valid_labels = set(st.session_state.tag_df['tag_name'].tolist())
-        invalid_labels = set(current_labels) - valid_labels
-        
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.metric("Total Annotations", len(st.session_state.annotated_entities))
-        with col_b:
-            st.metric("Unique Labels", len(set(current_labels)))
-        with col_c:
-            st.metric("Invalid Labels", len(invalid_labels))
-        
-        if invalid_labels:
-            st.warning(f"⚠️ Found invalid labels: {', '.join(invalid_labels)}")
-    
-    # Evaluation button
-    if st.button("🤖 Run Evaluation Agent", key="run_evaluation_btn"):
-        if not st.session_state.api_key:
-            st.error("❌ API key required for evaluation")
-        else:
-            try:
-                client = LLMClient(
-                    api_key=st.session_state.api_key,
-                    provider=st.session_state.model_provider,
-                    model=model,
-                )
-                
-                # Run evaluation
-                result = run_evaluation_agent(
-                    st.session_state.text_data,
-                    st.session_state.annotated_entities,
-                    st.session_state.tag_df,
-                    client,
-                    temperature=eval_temperature,
-                    max_tokens=eval_max_tokens
-                )
-                
-                # Handle different return formats
-                if len(result) == 3:
-                    updated_entities, stats, recommendations = result
-                    if stats:  # Only update if changes were made
-                        st.session_state.annotated_entities = updated_entities
-                        st.session_state.evaluation_stats = stats
-                        st.session_state.evaluation_recommendations = recommendations
-                        
-                        # Update editable dataframe if it exists
-                        if 'editable_entities_df' in st.session_state:
-                            try:
-                                df_updated = pd.DataFrame(updated_entities)
-                                if not df_updated.empty:
-                                    df_updated.insert(0, "ID", range(len(df_updated)))
-                                    st.session_state.editable_entities_df = df_updated
-                                else:
-                                    st.session_state.editable_entities_df = pd.DataFrame()
-                            except:
-                                pass
-                        
-                        # Show success message immediately
-                        st.success("✅ Evaluation completed! Results shown below.")
-                        
-                        # DON'T call st.rerun() here - let the results display naturally
-                        
-                elif len(result) == 2:
-                    # No changes made, just store recommendations for display
-                    updated_entities, stats = result
-                    st.session_state.pending_evaluation_recommendations = True
-                    st.info("ℹ️ Evaluation completed. No changes were recommended.")
-                
-            except Exception as e:
-                st.error(f"❌ Evaluation failed: {e}")
-                import traceback
-                st.error(traceback.format_exc())
-    
-    # Display evaluation results if they exist (this will show AFTER the button click)
-    if st.session_state.get('evaluation_stats'):
-        stats = st.session_state.evaluation_stats
-        
-        st.markdown("### 📊 Evaluation Results")
-        
-        col_a, col_b, col_c, col_d = st.columns(4)
-        with col_a:
-            st.metric("Kept", stats.get('kept', 0))
-        with col_b:
-            st.metric("Relabeled", stats.get('relabeled', 0))
-        with col_c:
-            st.metric("Removed", stats.get('removed', 0))
-        with col_d:
-            st.metric("Failed to Apply", stats.get('failed_to_apply', 0))
-        
-        # Show changes made
-        if stats.get('changes_made'):
-            with st.expander("📝 Changes Applied", expanded=True):
-                for change in stats['changes_made']:
-                    if change['type'] == 'relabel':
-                        st.success(f"✏️ Relabeled '{change['text']}': {change['old_label']} → {change['new_label']}")
-                        st.caption(f"Reason: {change['reason']}")
-                    elif change['type'] == 'remove':
-                        st.error(f"🗑️ Removed '{change['text']}' (was labeled as '{change['label']}')")
-                        st.caption(f"Reason: {change['reason']}")
-        
-        # Show recommendations if available
-        if st.session_state.get('evaluation_recommendations'):
-            recommendations = st.session_state.evaluation_recommendations
-            with st.expander("💡 Agent Recommendations", expanded=False):
-                st.text_area(
-                    "Evaluation Report:",
-                    value=recommendations,
-                    height=200,
-                    disabled=True
-                )
-        
-        # Add a separator and option to run evaluation again
-        st.markdown("---")
-        col_clear, col_rerun = st.columns(2)
-        
-        with col_clear:
-            if st.button("🧹 Clear Evaluation Results", key="clear_eval_results"):
-                if 'evaluation_stats' in st.session_state:
-                    del st.session_state.evaluation_stats
-                if 'evaluation_recommendations' in st.session_state:
-                    del st.session_state.evaluation_recommendations
-                st.rerun()
-        
-        with col_rerun:
-            if st.button("🔄 Run Evaluation Again", key="rerun_evaluation"):
-                # Clear previous results but keep the entities
-                if 'evaluation_stats' in st.session_state:
-                    del st.session_state.evaluation_stats
-                if 'evaluation_recommendations' in st.session_state:
-                    del st.session_state.evaluation_recommendations
-                st.rerun()
-    
-    # Handle pending recommendations display
-    elif st.session_state.get('pending_evaluation_recommendations'):
-        st.info("ℹ️ Evaluation completed. No changes were recommended by the agent.")
-        if st.button("Clear Message", key="clear_pending_eval"):
-            del st.session_state.pending_evaluation_recommendations
-            st.rerun()
-    
+# === LLM Evaluation Section ===
+if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
     st.markdown("---")
+    st.subheader("🤖 LLM Evaluation & Suggestions")
     
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.write("Use LLM to evaluate whether annotated entities match their tag definitions and get suggestions for improvements.")
+    
+    with col2:
+        if st.button("🤖 Evaluate Annotations", key="evaluate_annotations_btn"):
+            if not st.session_state.api_key:
+                st.error("❌ API key missing for evaluation")
+            elif not st.session_state.annotated_entities:
+                st.error("❌ No annotations to evaluate")
+            elif st.session_state.tag_df is None:
+                st.error("❌ Tag definitions missing")
+            else:
+                with st.spinner("🤖 LLM is evaluating your annotations..."):
+                    try:
+                        # Create LLM client
+                        client = LLMClient(
+                            api_key=st.session_state.api_key,
+                            provider=st.session_state.model_provider,
+                            model=model,
+                        )
+                        
+                        # Run evaluation
+                        evaluations = evaluate_annotations_with_llm(
+                            st.session_state.annotated_entities,
+                            st.session_state.tag_df,
+                            client,
+                            temperature=0.1,  # Low temperature for consistent evaluation
+                            max_tokens=2000
+                        )
+                        
+                        # Store results in session state
+                        st.session_state.evaluation_results = evaluations
+                        st.session_state.evaluation_complete = True
+                        
+                        # Calculate summary statistics
+                        total_entities = len(st.session_state.annotated_entities)
+                        correct_count = sum(1 for eval_result in evaluations if eval_result.get('is_correct', False))
+                        change_recommendations = sum(1 for eval_result in evaluations if eval_result.get('recommendation') == 'change_label')
+                        delete_recommendations = sum(1 for eval_result in evaluations if eval_result.get('recommendation') == 'delete')
+                        
+                        st.session_state.evaluation_summary = {
+                            'total_entities': total_entities,
+                            'evaluated_entities': len(evaluations),
+                            'correct_count': correct_count,
+                            'change_recommendations': change_recommendations,
+                            'delete_recommendations': delete_recommendations
+                        }
+                        
+                        st.success(f"✅ Evaluation completed! Analyzed {len(evaluations)} entities.")
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Evaluation failed: {e}")
+
+# Display evaluation results if they exist (outside the button click)
+if st.session_state.get('evaluation_complete') and st.session_state.get('evaluation_results'):
+    
+    # Display evaluation summary
+    st.markdown("### 📊 Evaluation Summary")
+    
+    summary = st.session_state.evaluation_summary
+    col_a, col_b, col_c, col_d = st.columns(4)
+    
+    with col_a:
+        st.metric("Total Entities", len(st.session_state.annotated_entities))  # Use current count
+    with col_b:
+        # Recalculate accuracy based on current entities and evaluation results
+        current_correct = 0
+        valid_evaluations = 0
+        for eval_result in st.session_state.evaluation_results:
+            entity_idx = eval_result.get('entity_index', -1)
+            if 0 <= entity_idx < len(st.session_state.annotated_entities):  # Only count if entity still exists
+                valid_evaluations += 1
+                if eval_result.get('is_correct', False):
+                    current_correct += 1
+        
+        accuracy = current_correct / valid_evaluations * 100 if valid_evaluations > 0 else 0
+        st.metric("Correct", current_correct, delta=f"{accuracy:.1f}%")
+    with col_c:
+        # Count remaining change recommendations
+        remaining_changes = sum(1 for eval_result in st.session_state.evaluation_results 
+                               if eval_result.get('recommendation') == 'change_label' and 
+                               0 <= eval_result.get('entity_index', -1) < len(st.session_state.annotated_entities))
+        st.metric("Remaining Changes", remaining_changes)
+    with col_d:
+        # Count remaining delete recommendations
+        remaining_deletes = sum(1 for eval_result in st.session_state.evaluation_results 
+                               if eval_result.get('recommendation') == 'delete' and 
+                               0 <= eval_result.get('entity_index', -1) < len(st.session_state.annotated_entities))
+        st.metric("Remaining Deletions", remaining_deletes)
+    
+    # Display evaluation results table - FIXED VERSION
+    st.markdown("### 📋 Evaluation Results & Recommendations")
+    
+    # Convert evaluation results to DataFrame for display - FIXED TO INCLUDE ALL ENTITIES
+    eval_df_display = []
+    
+    # Create a mapping of all entities with their evaluation results
+    entity_evaluation_map = {}
+    for eval_result in st.session_state.evaluation_results:
+        entity_idx = eval_result.get('entity_index', -1)
+        if 0 <= entity_idx < len(st.session_state.annotated_entities):
+            entity_evaluation_map[entity_idx] = eval_result
+    
+    # Process ALL entities in the current annotated_entities list
+    for current_idx, entity in enumerate(st.session_state.annotated_entities):
+        current_text = entity.get('text', '')
+        current_label = entity.get('label', '')
+        
+        # Check if we have evaluation results for this entity
+        if current_idx in entity_evaluation_map:
+            eval_result = entity_evaluation_map[current_idx]
+            
+            # Check if this recommendation was already applied
+            recommendation = eval_result.get('recommendation', '')
+            is_applied = False
+            
+            if recommendation == 'change_label':
+                suggested_label = eval_result.get('suggested_label', '')
+                # If current label matches suggested label, recommendation was applied
+                is_applied = (current_label == suggested_label)
+            elif recommendation == 'delete':
+                # If we're here, entity wasn't deleted, so not applied
+                is_applied = False
+            
+            # Determine correctness - if recommendation was applied and it was change_label, now it's correct
+            is_correct = eval_result.get('is_correct', False)
+            if is_applied and recommendation == 'change_label':
+                is_correct = True
+            
+            status = ''
+            if is_applied:
+                status = '✅ Applied'
+            elif not is_correct:
+                status = '❌ Needs Action'
+            else:
+                status = '✅ Correct'
+            
+            eval_df_display.append({
+                'ID': current_idx,
+                'Text': current_text,
+                'Current Label': current_label,
+                'Status': status,
+                'Confidence': f"{eval_result.get('confidence', 0)*100:.0f}%" if eval_result.get('confidence') else 'N/A',
+                'Recommendation': recommendation if not is_applied else 'Applied ✅',
+                'Suggested Label': eval_result.get('suggested_label', '') or 'N/A',
+                'Reasoning': eval_result.get('reasoning', '')[:100] + '...' if len(eval_result.get('reasoning', '')) > 100 else eval_result.get('reasoning', '')
+            })
+        else:
+            # Entity has no evaluation result - this might happen if evaluation was incomplete
+            eval_df_display.append({
+                'ID': current_idx,
+                'Text': current_text,
+                'Current Label': current_label,
+                'Status': '⚠️ Not Evaluated',
+                'Confidence': 'N/A',
+                'Recommendation': 'N/A',
+                'Suggested Label': 'N/A',
+                'Reasoning': 'No evaluation data available'
+            })
+    
+    if eval_df_display:
+        eval_display_df = pd.DataFrame(eval_df_display)
+        
+        # Show evaluation table
+        st.dataframe(eval_display_df, use_container_width=True, height=400)
+        
+        # Show debug information
+        with st.expander("🔍 Debug Information", expanded=False):
+            st.write(f"**Total entities in annotated_entities:** {len(st.session_state.annotated_entities)}")
+            st.write(f"**Total evaluation results:** {len(st.session_state.evaluation_results)}")
+            st.write(f"**Entities displayed in table:** {len(eval_df_display)}")
+            
+            # Show entity indices in evaluation results
+            eval_indices = [eval_result.get('entity_index', -1) for eval_result in st.session_state.evaluation_results]
+            st.write(f"**Entity indices in evaluation results:** {sorted(eval_indices)}")
+            
+            # Show which entities have no evaluation
+            evaluated_indices = set(eval_indices)
+            all_indices = set(range(len(st.session_state.annotated_entities)))
+            missing_indices = all_indices - evaluated_indices
+            if missing_indices:
+                st.write(f"**Entities missing evaluation:** {sorted(missing_indices)}")
+            else:
+                st.write("**All entities have evaluation results**")
+        
+        # Filter for actionable recommendations (NOT YET APPLIED) - FIXED
+        actionable_evals = []
+        for eval_result in st.session_state.evaluation_results:
+            entity_idx = eval_result.get('entity_index', -1)
+            
+            # Skip if entity index is invalid
+            if not (0 <= entity_idx < len(st.session_state.annotated_entities)):
+                continue
+                
+            recommendation = eval_result.get('recommendation', '')
+            
+            if recommendation == 'delete':
+                # Delete recommendations are always actionable if entity exists
+                actionable_evals.append(eval_result)
+            elif recommendation == 'change_label':
+                # Change recommendations are actionable if not already applied
+                current_entity = st.session_state.annotated_entities[entity_idx]
+                current_label = current_entity.get('label', '')
+                suggested_label = eval_result.get('suggested_label', '')
+                
+                # Only actionable if current label != suggested label
+                if current_label != suggested_label:
+                    actionable_evals.append(eval_result)
+        
+        if actionable_evals:
+            st.markdown("### 🔧 Apply Recommendations")
+            
+            # Create selection options for REMAINING recommendations only
+            selection_options = []
+            for eval_result in actionable_evals:
+                entity_idx = eval_result.get('entity_index', -1)
+                # Find the evaluation index for this eval_result
+                eval_idx = next((i for i, er in enumerate(st.session_state.evaluation_results) if er == eval_result), -1)
+                
+                if 0 <= entity_idx < len(st.session_state.annotated_entities):
+                    current_entity = st.session_state.annotated_entities[entity_idx]
+                    current_text = current_entity.get('text', eval_result.get('current_text', ''))
+                    
+                    if eval_result.get('recommendation') == 'delete':
+                        action = "DELETE"
+                    else:
+                        action = f"CHANGE to '{eval_result.get('suggested_label')}'"
+                    
+                    option_text = f"[Entity {entity_idx}] '{current_text}' → {action}"
+                    selection_options.append((eval_idx, option_text))
+            
+            # Multiselect for recommendations to apply
+            selected_recommendations = st.multiselect(
+                "Select recommendations to apply:",
+                options=[idx for idx, _ in selection_options],
+                format_func=lambda x: next(text for idx, text in selection_options if idx == x),
+                key="selected_eval_recommendations"
+            )
+            
+            col1, col2 = st.columns([1, 3])
+            
+            with col1:
+                if st.button("✅ Apply Selected", disabled=not selected_recommendations, key="apply_recommendations_btn"):
+                    if selected_recommendations:
+                        try:
+                            # Apply recommendations
+                            updated_entities, changes_made = apply_evaluation_recommendations(
+                                st.session_state.annotated_entities,
+                                st.session_state.evaluation_results,
+                                selected_recommendations
+                            )
+                            
+                            # Update session state
+                            st.session_state.annotated_entities = updated_entities
+                            
+                            # Update editable dataframe if it exists
+                            if 'editable_entities_df' in st.session_state:
+                                try:
+                                    df_updated = pd.DataFrame(updated_entities)
+                                    if not df_updated.empty:
+                                        df_updated.insert(0, "ID", range(len(df_updated)))
+                                        st.session_state.editable_entities_df = df_updated
+                                    else:
+                                        st.session_state.editable_entities_df = pd.DataFrame()
+                                except Exception as df_error:
+                                    st.warning(f"Could not update editable dataframe: {df_error}")
+                            
+                            # Show success message with changes
+                            st.success(f"✅ Applied {len(selected_recommendations)} recommendations!")
+                            
+                            if changes_made:
+                                with st.expander("📝 Changes Made", expanded=True):
+                                    for change in changes_made:
+                                        st.write(f"• {change}")
+                            
+                            # Clear the selection to avoid re-applying
+                            if 'selected_eval_recommendations' in st.session_state:
+                                del st.session_state['selected_eval_recommendations']
+                            
+                            # Rerun to refresh the display
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"❌ Failed to apply recommendations: {e}")
+            
+            with col2:
+                if selected_recommendations:
+                    st.info(f"💡 {len(selected_recommendations)} recommendation(s) selected for application.")
+                else:
+                    st.info("💡 Select recommendations above to apply them.")
+        
+        else:
+            st.success("🎉 All recommendations have been applied or no actionable recommendations remain!")
+    
+    else:
+        st.info("ℹ️ No evaluation results to display (all entities may have been processed).")
+
+# Option to clear evaluation results
+if st.button("🧹 Clear Evaluation Results", key="clear_eval_results_btn"):
+    st.session_state.evaluation_results = []
+    st.session_state.evaluation_complete = False
+    st.session_state.evaluation_summary = {}
+    if 'selected_eval_recommendations' in st.session_state:
+        del st.session_state['selected_eval_recommendations']
+    st.rerun()
+st.markdown("---")
+    # Replace your existing JSON export section with this enhanced version:
+
+if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
     st.markdown("---")
     st.header("💾 Export Results")
-    # Original download functionality
+    
+    # Build comprehensive output JSON
     output_json = {
         "text": st.session_state.get("text_data", ""),
         "entities": st.session_state.annotated_entities,
+        "metadata": {
+            "total_entities": len(st.session_state.annotated_entities),
+            "annotation_timestamp": pd.Timestamp.now().isoformat(),
+            "model_provider": st.session_state.get("model_provider", ""),
+            "model": model if 'model' in locals() else "",
+            "processing_parameters": {
+                "temperature": temperature if 'temperature' in locals() else 0.1,
+                "chunk_size": chunk_size if 'chunk_size' in locals() else 1000,
+                "max_tokens": max_tokens if 'max_tokens' in locals() else 1000
+            }
+        }
     }
+    
+    # Add evaluation data if available
+    if st.session_state.get('evaluation_complete') and st.session_state.get('evaluation_results'):
+        output_json["evaluation"] = {
+            "evaluation_results": st.session_state.evaluation_results,
+            "evaluation_summary": st.session_state.evaluation_summary,
+            "evaluation_timestamp": pd.Timestamp.now().isoformat()
+        }
+        st.info("📊 Export includes LLM evaluation results and recommendations.")
+    
+    # Add validation data if available
+    if st.session_state.get('validation_results'):
+        output_json["validation"] = {
+            "validation_results": st.session_state.validation_results,
+            "validation_timestamp": pd.Timestamp.now().isoformat()
+        }
+        st.info("✅ Export includes validation results.")
+    
+    # Add fix data if available
+    if st.session_state.get('fix_results'):
+        output_json["position_fixes"] = {
+            "fix_results": st.session_state.fix_results,
+            "fix_timestamp": pd.Timestamp.now().isoformat()
+        }
+        st.info("🔧 Export includes position fix results.")
+    
     json_str = json.dumps(output_json, indent=2, ensure_ascii=False)
     
-    st.download_button(
-        "📥 Download Annotations as JSON", 
-        data=json_str, 
-        file_name="annotations.json", 
-        mime="application/json",
-        key="download_json_btn"
-    )
-    st.markdown("---")
+    # Show export preview
+    with st.expander("📄 Export Preview", expanded=False):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Entities", len(output_json["entities"]))
+            st.metric("Text Length", len(output_json["text"]))
+        
+        with col2:
+            if "evaluation" in output_json:
+                st.metric("Evaluation Results", len(output_json["evaluation"]["evaluation_results"]))
+            if "validation" in output_json:
+                st.metric("Validation Status", "✅ Available")
+        
+        st.text_area("JSON Preview", json_str[:1000] + "..." if len(json_str) > 1000 else json_str, height=200)
     
+    # Download button
+    st.download_button(
+        "📥 Download Complete Annotations with Metadata", 
+        data=json_str, 
+        file_name=f"annotations_complete_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json", 
+        mime="application/json",
+        key="download_complete_json_btn"
+    )
+    
+    # Optional: Also provide basic annotations-only export
+    basic_json = {
+        "text": st.session_state.get("text_data", ""),
+        "entities": st.session_state.annotated_entities,
+    }
+    basic_json_str = json.dumps(basic_json, indent=2, ensure_ascii=False)
+    
+    st.download_button(
+        "📥 Download Annotations Only (Basic)", 
+        data=basic_json_str, 
+        file_name=f"annotations_basic_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json", 
+        mime="application/json",
+        key="download_basic_json_btn"
+    )
+    
+    st.markdown("---")
 
     # Optional clear all button
     if st.button("🧹 Clear All Annotations"):
