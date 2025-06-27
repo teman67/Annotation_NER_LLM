@@ -17,7 +17,9 @@ from helper import (
     display_annotated_entities,  # Function to display annotated entities in a visually appealing way
     run_annotation_pipeline,  # Function to run the annotation pipeline
     clear_all_previous_data,  # Function to clear all previous data
-    evaluate_annotations_with_llm  # Function to evaluate annotations with LLM
+    evaluate_annotations_with_llm,  # Function to evaluate annotations with LLM
+    apply_evaluation_recommendations, # Function to apply evaluation recommendations
+    run_annotation_pipeline,  # Function to run the annotation pipeline
 )
 from llm_clients import LLMClient
 import html
