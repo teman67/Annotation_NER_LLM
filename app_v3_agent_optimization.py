@@ -148,6 +148,7 @@ def evaluate_annotations_with_llm(entities, tag_df, client, temperature=0.1, max
         
     from prompts_flat import build_evaluation_prompt
     
+    
     # Split entities into batches if too many (to avoid token limits)
     batch_size = 50  # Adjust based on your needs
     all_evaluations = []
@@ -929,10 +930,10 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                 'Text': current_text,
                 'Current Label': current_label,
                 'Status': status,
-                'Confidence': f"{eval_result.get('confidence', 0)*100:.0f}%" if eval_result.get('confidence') else 'N/A',
+                # 'Confidence': f"{eval_result.get('confidence', 0)*100:.0f}%" if eval_result.get('confidence') else 'N/A',
                 'Recommendation': recommendation if not is_applied else 'Applied ✅',
                 'Suggested Label': eval_result.get('suggested_label', '') or 'N/A',
-                'Reasoning': eval_result.get('reasoning', '')[:100] + '...' if len(eval_result.get('reasoning', '')) > 100 else eval_result.get('reasoning', '')
+                'Reasoning': eval_result.get('reasoning', '')[:300] + '...' if len(eval_result.get('reasoning', '')) > 300 else eval_result.get('reasoning', '')
             })
         else:
             # Entity has no evaluation result - this might happen if evaluation was incomplete
@@ -941,7 +942,7 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                 'Text': current_text,
                 'Current Label': current_label,
                 'Status': '⚠️ Not Evaluated',
-                'Confidence': 'N/A',
+                # 'Confidence': 'N/A',
                 'Recommendation': 'N/A',
                 'Suggested Label': 'N/A',
                 'Reasoning': 'No evaluation data available'
@@ -1092,8 +1093,7 @@ if st.button("🧹 Clear Evaluation Results", key="clear_eval_results_btn"):
     if 'selected_eval_recommendations' in st.session_state:
         del st.session_state['selected_eval_recommendations']
     st.rerun()
-st.markdown("---")
-    # Replace your existing JSON export section with this enhanced version:
+
 
 if st.session_state.get("annotation_complete") and st.session_state.get("annotated_entities"):
     st.markdown("---")
@@ -1123,7 +1123,7 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
             "evaluation_summary": st.session_state.evaluation_summary,
             "evaluation_timestamp": pd.Timestamp.now().isoformat()
         }
-        st.info("📊 Export includes LLM evaluation results and recommendations.")
+        # st.info("📊 Export includes LLM evaluation results and recommendations.")
     
     # Add validation data if available
     if st.session_state.get('validation_results'):
@@ -1142,31 +1142,15 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
         st.info("🔧 Export includes position fix results.")
     
     json_str = json.dumps(output_json, indent=2, ensure_ascii=False)
-    
-    # Show export preview
-    with st.expander("📄 Export Preview", expanded=False):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.metric("Entities", len(output_json["entities"]))
-            st.metric("Text Length", len(output_json["text"]))
-        
-        with col2:
-            if "evaluation" in output_json:
-                st.metric("Evaluation Results", len(output_json["evaluation"]["evaluation_results"]))
-            if "validation" in output_json:
-                st.metric("Validation Status", "✅ Available")
-        
-        st.text_area("JSON Preview", json_str[:1000] + "..." if len(json_str) > 1000 else json_str, height=200)
-    
-    # Download button
-    st.download_button(
-        "📥 Download Complete Annotations with Metadata", 
-        data=json_str, 
-        file_name=f"annotations_complete_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json", 
-        mime="application/json",
-        key="download_complete_json_btn"
-    )
+       
+    # # Download button
+    # st.download_button(
+    #     "📥 Download Complete Annotations with Metadata", 
+    #     data=json_str, 
+    #     file_name=f"annotations_complete_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json", 
+    #     mime="application/json",
+    #     key="download_complete_json_btn"
+    # )
     
     # Optional: Also provide basic annotations-only export
     basic_json = {
@@ -1176,7 +1160,7 @@ if st.session_state.get("annotation_complete") and st.session_state.get("annotat
     basic_json_str = json.dumps(basic_json, indent=2, ensure_ascii=False)
     
     st.download_button(
-        "📥 Download Annotations Only (Basic)", 
+        "📥 Download Annotated Text", 
         data=basic_json_str, 
         file_name=f"annotations_basic_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json", 
         mime="application/json",

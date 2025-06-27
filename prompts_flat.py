@@ -270,14 +270,13 @@ Return a JSON array with evaluation results for each entity:
     "current_text": "original entity text",
     "current_label": "current_label",
     "is_correct": true/false,
-    "confidence": 0.95,
     "recommendation": "keep/change_label",
     "suggested_label": "new_label or null",
     "reasoning": "explanation of the evaluation"
   }}
 ]
 
-Provide evaluation for ALL entities in the same order they were presented:"""
+Provide evaluation for ALL entities in the same order they were presented in max 300 characters:"""
 
     return prompt
 
