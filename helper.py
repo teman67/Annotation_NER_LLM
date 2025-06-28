@@ -857,47 +857,48 @@ def apply_evaluation_recommendations(entities, evaluations, selected_indices):
     """
     if not entities:
         return [], ["No entities to process"]
-    
+   
     if not evaluations:
         return entities, ["No evaluations available"]
-    
+   
     updated_entities = entities.copy()
     changes_made = []
     entities_to_delete = []  # Use list to maintain order
-    
-    # Process all recommendations first (for label changes)
+   
+    # Process all recommendations first (for label changes and mark deletions)
     for eval_idx in selected_indices:
         if eval_idx < len(evaluations):
             evaluation = evaluations[eval_idx]
             entity_idx = evaluation.get('entity_index')
-            
+           
             if entity_idx is None or entity_idx >= len(updated_entities):
                 changes_made.append(f"Warning: Invalid entity index {entity_idx}")
                 continue
-                
+               
             recommendation = evaluation.get('recommendation', '')
             current_text = updated_entities[entity_idx].get('text', 'Unknown')
-            
+           
             if recommendation == 'change_label' and evaluation.get('suggested_label'):
                 # Change the label
                 old_label = updated_entities[entity_idx].get('label', 'Unknown')
                 new_label = evaluation['suggested_label']
                 updated_entities[entity_idx]['label'] = new_label
                 changes_made.append(f"Changed '{current_text}' from '{old_label}' to '{new_label}'")
-                
-            # elif recommendation == 'delete':
-            #     # Mark for deletion (will delete later)
-            #     entities_to_delete.append(entity_idx)
-            #     changes_made.append(f"Marked '{current_text}' for deletion")
-    
+               
+            elif recommendation == 'delete':
+                # Mark for deletion (will delete later)
+                entities_to_delete.append(entity_idx)
+                changes_made.append(f"Marked '{current_text}' for deletion")
+   
     # Delete entities (in reverse order to maintain indices)
     if entities_to_delete:
         for entity_idx in sorted(set(entities_to_delete), reverse=True):
             if entity_idx < len(updated_entities):
                 deleted_text = updated_entities[entity_idx].get('text', 'Unknown')
+                deleted_label = updated_entities[entity_idx].get('label', 'Unknown')
                 updated_entities.pop(entity_idx)
-                changes_made.append(f"Deleted entity: '{deleted_text}'")
-    
+                changes_made.append(f"Deleted entity: '{deleted_text}' (label: '{deleted_label}')")
+   
     return updated_entities, changes_made
 
 

@@ -710,6 +710,7 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
             
             # Create selection options for REMAINING recommendations only
             selection_options = []
+            
             for eval_result in actionable_evals:
                 entity_idx = eval_result.get('entity_index', -1)
                 # Find the evaluation index for this eval_result
@@ -720,7 +721,7 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                     current_text = current_entity.get('text', eval_result.get('current_text', ''))
                     
                     if eval_result.get('recommendation') == 'delete':
-                        action = "DELETE this Entity Manually From the Table in 📝 Edit Annotations"  
+                        action = "DELETE" 
                     else:
                         action = f"CHANGE to '{eval_result.get('suggested_label')}'"
                     
@@ -741,7 +742,7 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                 if st.button("✅ Apply Selected", disabled=not selected_recommendations, key="apply_recommendations_btn"):
                     if selected_recommendations:
                         try:
-                            # Apply recommendations
+                            # Apply recommendations (including automatic deletions)
                             updated_entities, changes_made = apply_evaluation_recommendations(
                                 st.session_state.annotated_entities,
                                 st.session_state.evaluation_results,
@@ -763,6 +764,35 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                                 except Exception as df_error:
                                     st.warning(f"Could not update editable dataframe: {df_error}")
                             
+                            # Update evaluation results to reflect the changes
+                            # Remove evaluation results for deleted entities and update indices
+                            remaining_evaluation_results = []
+                            entity_index_mapping = {}  # old_index -> new_index
+                            
+                            # Create mapping for entities that weren't deleted
+                            new_idx = 0
+                            for old_idx in range(len(st.session_state.annotated_entities) + len([e for e in st.session_state.evaluation_results if e.get('recommendation') == 'delete' and e.get('entity_index', -1) in [st.session_state.evaluation_results[i].get('entity_index') for i in selected_recommendations]])):
+                                # Check if this entity was deleted
+                                was_deleted = any(
+                                    st.session_state.evaluation_results[sel_idx].get('entity_index') == old_idx and 
+                                    st.session_state.evaluation_results[sel_idx].get('recommendation') == 'delete'
+                                    for sel_idx in selected_recommendations
+                                )
+                                
+                                if not was_deleted:
+                                    entity_index_mapping[old_idx] = new_idx
+                                    new_idx += 1
+                            
+                            # Update evaluation results with new indices
+                            for eval_result in st.session_state.evaluation_results:
+                                old_entity_idx = eval_result.get('entity_index', -1)
+                                if old_entity_idx in entity_index_mapping:
+                                    eval_result['entity_index'] = entity_index_mapping[old_entity_idx]
+                                    remaining_evaluation_results.append(eval_result)
+                                # If not in mapping, entity was deleted, so don't include this evaluation result
+                            
+                            st.session_state.evaluation_results = remaining_evaluation_results
+                            
                             # Show success message with changes
                             st.success(f"✅ Applied {len(selected_recommendations)} recommendations!")
                             
@@ -780,6 +810,8 @@ if st.session_state.get('evaluation_complete') and st.session_state.get('evaluat
                             
                         except Exception as e:
                             st.error(f"❌ Failed to apply recommendations: {e}")
+                            import traceback
+                            st.error(traceback.format_exc())  # For debugging
             
             with col2:
                 if selected_recommendations:
