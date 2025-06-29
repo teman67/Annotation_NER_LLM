@@ -5,7 +5,7 @@ import json
 import streamlit as st
 import pandas as pd
 from prompts_flat import build_annotation_prompt
-from helper import (
+from helper_manual_annotations import (
     chunk_text,     # Function to chunk text into smaller pieces
     aggregate_entities,  # Function to aggregate entities with offsets
     display_chunk_progress,  # Function to display progress of chunk processing 
@@ -21,7 +21,6 @@ from helper import (
     apply_evaluation_recommendations, # Function to apply evaluation recommendations
     run_annotation_pipeline,  # Function to run the annotation pipeline
     display_annotated_entities_with_selection,
-    
 )
 from llm_clients import LLMClient
 import html
