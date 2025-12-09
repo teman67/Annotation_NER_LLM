@@ -6,7 +6,7 @@ A powerful Streamlit application that uses Large Language Models (OpenAI GPT or 
 
 ![App Screenshot](ScreenShots/Output.png)
 
-[Live Show](https://annotation-llm-a68350c1bd58.herokuapp.com/)
+[Live Show](https://annotation-by-llm.streamlit.app/)
 
 ## ✨ Features
 
